@@ -1,9 +1,9 @@
-import { auth, db, firebaseReady } from "./firebase.js";
+// public/js/kbs-book-room.js
+import { db, getCommitteeByLineId, getKbsPlaces, insertAuditLog } from "./firestore.js";
 import {
   Timestamp,
   collection,
   doc,
-  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -11,67 +11,116 @@ import {
   serverTimestamp,
   where,
   writeBatch
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-const rooms = [
-  "หอประชุม",
-  "โดมราชพฤกษ์",
-  "ห้องประชุม Auditorium",
-  "ห้องประชุมราชพฤกษ์",
-  "ห้องทูบี",
-  "ห้องสมาคมผู้ปกครองและครู",
-  "ห้องประชุมช่อราชพฤกษ์"
-];
 const statuses = {
-  "รออนุมัติ": "status-pending",
-  "อนุมัติ": "status-approved",
-  "ไม่อนุมัติ": "status-rejected"
+  "รออนุมัติ": "bg-warning text-dark",
+  "อนุมัติ": "bg-success",
+  "ไม่อนุมัติ": "bg-danger"
 };
+
 const dateFormatter = new Intl.DateTimeFormat("th-TH", {
   timeZone: "Asia/Bangkok",
   dateStyle: "medium",
   timeStyle: "short"
 });
 
-const firebaseMessage = document.getElementById("firebase-message");
 const appMessage = document.getElementById("app-message");
-const componentError = document.getElementById("component-error");
 let publicBookingsBody;
 let adminBookingsBody;
 let cachedPublicBookings = [];
+let availablePlaces = [];
+let currentUser = null;
 
+// ==========================================
+// 🛡️ ตรวจสอบ Session จาก LINE Login & ดึงข้อมูลจาก committees
+// ==========================================
+async function initAuthSession() {
+  const userSessionStr = sessionStorage.getItem("kbs_user");
+  if (!userSessionStr) {
+    window.location.href = "login.html";
+    return false;
+  }
+
+  try {
+    currentUser = JSON.parse(userSessionStr);
+  } catch (e) {
+    console.error("❌ อ่านข้อมูล Session ล้มเหลว:", e);
+    sessionStorage.removeItem("kbs_user");
+    window.location.href = "login.html";
+    return false;
+  }
+
+  const lineUserId = currentUser.line_user_id || currentUser.userId || currentUser.id;
+  if (lineUserId && lineUserId !== "DEV_USER_001") {
+    const committeeData = await getCommitteeByLineId(lineUserId);
+    if (committeeData) {
+      currentUser = {
+        ...currentUser,
+        committeeId: committeeData.docId,
+        line_user_id: lineUserId,
+        name: committeeData.name || currentUser.name,
+        pos: committeeData.pos || currentUser.pos || "",
+        role: committeeData.role || currentUser.role || "staff"
+      };
+      sessionStorage.setItem("kbs_user", JSON.stringify(currentUser));
+    } else {
+      showMessage(appMessage, "ไม่พบข้อมูลทะเบียนบุคลากร กรุณาลงทะเบียนก่อนใช้งาน", true);
+    }
+  }
+  // แสดงข้อมูลบน Navbar มาตรฐานเดียวกับทุกระบบ
+  initUserProfile(currentUser);
+
+  // ตรวจสอบสิทธิ์ Admin เพื่อเปิดแท็บจัดการคำขอจอง
+  const isAdmin = (currentUser.role || "").toLowerCase() === "admin";
+  const adminTabBtn = document.getElementById("tab-admin-btn");
+  if (adminTabBtn) {
+    adminTabBtn.hidden = !isAdmin;
+  }
+  if (isAdmin) {
+    const adminIdentity = document.getElementById("admin-identity");
+    if (adminIdentity) {
+      adminIdentity.textContent = `ผู้ดูแลระบบ: ${currentUser.name || lineUserId}`;
+    }
+  }
+
+  return true;
+}
+
+function initUserProfile(user) {
+  const nameElem = document.getElementById("headerUserName");
+  const posElem = document.getElementById("headerUserPosition");
+  const roleElem = document.getElementById("headerUserRole");
+  const imgElem = document.getElementById("headerUserImg");
+
+  if (nameElem) nameElem.textContent = user.name || "ผู้ใช้งาน";
+  if (posElem) posElem.textContent = `ตำแหน่ง: ${user.pos || user.position || "บุคลากร"}`;
+  if (roleElem) roleElem.textContent = `Role: ${(user.role || "staff").toUpperCase()}`;
+  if (imgElem && user.picture) imgElem.src = user.picture;
+}
+
+// ==========================================
+// 🔔 UI Helpers
+// ==========================================
 function showMessage(element, message, isError) {
+  if (!element) return;
   element.textContent = message;
-  element.classList.toggle("notice-error", Boolean(isError));
+  element.classList.remove("alert-info", "alert-success", "alert-danger");
+  element.classList.add(isError ? "alert-danger" : "alert-success");
   element.hidden = false;
 }
 
 function clearMessage(element) {
+  if (!element) return;
   element.textContent = "";
   element.hidden = true;
 }
 
 function setBusy(button, busy, busyText) {
-  if (!button.dataset.label) button.dataset.label = button.textContent;
+  if (!button) return;
+  if (!button.dataset.label) button.dataset.label = button.innerHTML;
   button.disabled = busy;
-  button.textContent = busy ? busyText : button.dataset.label;
-}
-
-async function loadComponents() {
-  const componentNames = ["booking", "bookings", "admin"];
-  const components = await Promise.all(componentNames.map(async (name) => {
-    const response = await fetch(`./components/${name}.html`);
-    if (!response.ok) throw new Error(`โหลดเมนู ${name} ไม่สำเร็จ (${response.status})`);
-    return response.text();
-  }));
-  const container = document.getElementById("component-container");
-  container.replaceChildren();
-  components.forEach((markup) => container.insertAdjacentHTML("beforeend", markup));
+  button.innerHTML = busy ? busyText : button.dataset.label;
 }
 
 function timestampDate(value) {
@@ -92,28 +141,45 @@ function createCell(text) {
 
 function createStatus(status) {
   const badge = document.createElement("span");
-  badge.className = `status ${statuses[status] || "status-pending"}`;
+  badge.className = `badge ${statuses[status] || "bg-warning text-dark"}`;
   badge.textContent = status;
   return badge;
 }
 
-function populateRoomOptions() {
+async function populateRoomOptions() {
   const select = document.getElementById("location");
-  rooms.forEach((room) => {
+  if (!select) return;
+
+  select.innerHTML = '<option value="">กำลังโหลดรายชื่อสถานที่...</option>';
+  availablePlaces = await getKbsPlaces();
+
+  select.innerHTML = '<option value="">เลือกสถานที่</option>';
+  if (availablePlaces.length === 0) {
     const option = document.createElement("option");
-    option.value = room;
-    option.textContent = room;
+    option.value = "";
+    option.textContent = "ไม่พบข้อมูลสถานที่ในระบบ";
+    option.disabled = true;
+    select.append(option);
+    return;
+  }
+
+  availablePlaces.forEach((place) => {
+    const option = document.createElement("option");
+    option.value = place.id; // เก็บรหัส เช่น "11018"
+    option.textContent = place.capacity ? `${place.name} (รองรับ ${place.capacity} คน)` : place.name;
     select.append(option);
   });
 }
 
 function populateYearFilter() {
   const select = document.getElementById("year-filter");
+  if (!select) return;
   const currentYear = new Date().getFullYear();
   const allYears = document.createElement("option");
   allYears.value = "";
   allYears.textContent = "ทุกปี";
   select.append(allYears);
+
   for (let year = currentYear - 2; year <= currentYear + 5; year += 1) {
     const option = document.createElement("option");
     option.value = String(year);
@@ -121,9 +187,13 @@ function populateYearFilter() {
     select.append(option);
   }
   select.value = String(currentYear);
-  document.getElementById("month-filter").value = String(new Date().getMonth());
+  const monthFilter = document.getElementById("month-filter");
+  if (monthFilter) monthFilter.value = String(new Date().getMonth());
 }
 
+// ==========================================
+// 📋 รายการจองสาธารณะ (Bookings View)
+// ==========================================
 function renderPublicBookings() {
   const month = document.getElementById("month-filter").value;
   const year = document.getElementById("year-filter").value;
@@ -132,15 +202,17 @@ function renderPublicBookings() {
     return (!month || date.getMonth() === Number(month)) &&
       (!year || date.getFullYear() === Number(year));
   });
+
   publicBookingsBody.replaceChildren();
   if (visible.length === 0) {
     const row = publicBookingsBody.insertRow();
     const cell = row.insertCell();
     cell.colSpan = 5;
-    cell.className = "empty-cell";
+    cell.className = "text-center text-muted py-4";
     cell.textContent = "ไม่พบรายการจองในช่วงเวลาที่เลือก";
     return;
   }
+
   visible.forEach((booking) => {
     const row = publicBookingsBody.insertRow();
     row.append(
@@ -155,7 +227,7 @@ function renderPublicBookings() {
 }
 
 async function loadPublicBookings() {
-  publicBookingsBody.innerHTML = '<tr><td colspan="5" class="empty-cell">กำลังโหลดข้อมูล...</td></tr>';
+  publicBookingsBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">กำลังโหลดข้อมูล...</td></tr>';
   try {
     const result = await getDocs(query(
       collection(db, "publicBookings"),
@@ -166,14 +238,19 @@ async function loadPublicBookings() {
     renderPublicBookings();
   } catch (error) {
     showMessage(appMessage, `โหลดรายการจองไม่สำเร็จ: ${error.message}`, true);
-    publicBookingsBody.innerHTML = '<tr><td colspan="5" class="empty-cell">ไม่สามารถโหลดข้อมูลได้</td></tr>';
+    publicBookingsBody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">ไม่สามารถโหลดข้อมูลได้</td></tr>';
   }
 }
 
+// ==========================================
+// 📝 บันทึกคำขอจองใหม่ (ดึงชื่อและตำแหน่งจาก currentUser อัตโนมัติ)
+// ==========================================
 function getBookingFormData(form) {
+  if (!currentUser || !currentUser.name) {
+    throw new Error("ไม่พบข้อมูลผู้จอง กรุณาเข้าสู่ระบบใหม่อีกครั้ง");
+  }
+
   const formData = new FormData(form);
-  const position = formData.get("position");
-  const location = formData.get("location");
   const startTime = new Date(formData.get("startTime"));
   const endTime = new Date(formData.get("endTime"));
 
@@ -183,14 +260,20 @@ function getBookingFormData(form) {
   if (startTime <= new Date()) {
     throw new Error("กรุณาเลือกเวลาเริ่มใช้ในอนาคต");
   }
-  if (!rooms.includes(location)) throw new Error("กรุณาเลือกสถานที่จากรายการ");
+
+  const selectedPlaceId = String(formData.get("location") || "").trim();
+  const selectedPlace = availablePlaces.find((p) => String(p.id) === selectedPlaceId);
+  if (!selectedPlace) {
+    throw new Error("กรุณาเลือกสถานที่จากรายการ");
+  }
 
   return {
-    fullName: String(formData.get("fullName")).trim(),
-    position,
-    positionOther: position === "อื่นๆ" ? String(formData.get("positionOther")).trim() : "",
+    line_user_id: currentUser.line_user_id || currentUser.userId || currentUser.id || "",
+    fullName: currentUser.name,
+    pos: currentUser.pos || currentUser.position || "",
     phone: String(formData.get("phone")).trim(),
-    location,
+    placeId: selectedPlace.id,     // บันทึกรหัส เช่น "11018"
+    location: selectedPlace.name,  // บันทึกชื่อ เช่น "KBS Sport Center (อาคารศูนย์กีฬาชั้นล่าง)"
     purpose: String(formData.get("purpose")).trim(),
     startTime: Timestamp.fromDate(startTime),
     endTime: Timestamp.fromDate(endTime),
@@ -223,6 +306,7 @@ async function submitBooking(event) {
   const form = event.currentTarget;
   const button = document.getElementById("submit-booking");
   setBusy(button, true, "กำลังบันทึก...");
+
   try {
     const booking = getBookingFormData(form);
     if (await checkForRoomConflict(booking)) {
@@ -233,10 +317,13 @@ async function submitBooking(event) {
     const bookingRef = doc(collection(db, "bookings"));
     const publicBookingRef = doc(db, "publicBookings", bookingRef.id);
     const createdAt = serverTimestamp();
+
     batch.set(bookingRef, { ...booking, createdAt, updatedAt: createdAt });
     batch.set(publicBookingRef, {
       bookingId: bookingRef.id,
       fullName: booking.fullName,
+      pos: booking.pos,
+      placeId: booking.placeId,
       location: booking.location,
       startTime: booking.startTime,
       endTime: booking.endTime,
@@ -245,6 +332,11 @@ async function submitBooking(event) {
       updatedAt: createdAt
     });
     await batch.commit();
+
+    if (typeof insertAuditLog === "function" && currentUser) {
+      await insertAuditLog("BOOK_ROOM", `ขอจอง ${booking.location} (${booking.purpose})`, currentUser);
+    }
+
     form.reset();
     showMessage(appMessage, "ส่งคำขอจองเรียบร้อยแล้ว กรุณารอผู้ดูแลอนุมัติ", false);
     await loadPublicBookings();
@@ -255,44 +347,53 @@ async function submitBooking(event) {
   }
 }
 
+// ==========================================
+// ⚙️ ส่วนจัดการสำหรับผู้ดูแล (Admin View)
+// ==========================================
 function renderAdminBookings(bookings) {
   adminBookingsBody.replaceChildren();
   if (bookings.length === 0) {
     const row = adminBookingsBody.insertRow();
     const cell = row.insertCell();
     cell.colSpan = 6;
-    cell.className = "empty-cell";
+    cell.className = "text-center text-muted py-4";
     cell.textContent = "ไม่มีรายการจอง";
     return;
   }
+
   bookings.forEach((booking) => {
     const row = adminBookingsBody.insertRow();
+    const bookerDisplay = booking.pos ? `${booking.fullName} (${booking.pos})` : booking.fullName;
     row.append(
       createCell(displayDate(booking.startTime)),
-      createCell(booking.fullName),
+      createCell(bookerDisplay),
       createCell(booking.phone),
       createCell(`${booking.location} — ${booking.purpose}`)
     );
     const statusCell = row.insertCell();
     statusCell.append(createStatus(booking.status));
+
     const actionCell = row.insertCell();
-    actionCell.className = "action-cell";
     if (booking.status === "รออนุมัติ") {
+      const btnGroup = document.createElement("div");
+      btnGroup.className = "d-flex gap-1";
       ["อนุมัติ", "ไม่อนุมัติ"].forEach((status) => {
         const button = document.createElement("button");
         button.type = "button";
-        button.className = `button ${status === "อนุมัติ" ? "button-primary" : "button-danger"}`;
+        button.className = `btn btn-sm ${status === "อนุมัติ" ? "btn-success" : "btn-danger"}`;
         button.dataset.bookingId = booking.id;
         button.dataset.status = status;
         button.textContent = status;
-        actionCell.append(button);
+        btnGroup.append(button);
       });
+      actionCell.append(btnGroup);
     }
   });
 }
 
 async function loadAdminBookings() {
-  adminBookingsBody.innerHTML = '<tr><td colspan="6" class="empty-cell">กำลังโหลดข้อมูล...</td></tr>';
+  if ((currentUser?.role || "").toLowerCase() !== "admin") return;
+  adminBookingsBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">กำลังโหลดข้อมูล...</td></tr>';
   try {
     const result = await getDocs(query(
       collection(db, "bookings"),
@@ -302,19 +403,31 @@ async function loadAdminBookings() {
     renderAdminBookings(result.docs.map((snapshot) => ({ id: snapshot.id, ...snapshot.data() })));
   } catch (error) {
     showMessage(appMessage, `โหลดข้อมูลผู้ดูแลไม่สำเร็จ: ${error.message}`, true);
-    adminBookingsBody.innerHTML = '<tr><td colspan="6" class="empty-cell">ไม่สามารถโหลดข้อมูลได้</td></tr>';
+    adminBookingsBody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">ไม่สามารถโหลดข้อมูลได้</td></tr>';
   }
 }
 
 async function updateBookingStatus(bookingId, status, button) {
+  if ((currentUser?.role || "").toLowerCase() !== "admin") return;
   if (!["อนุมัติ", "ไม่อนุมัติ"].includes(status)) return;
+
   setBusy(button, true, "กำลังบันทึก...");
   clearMessage(appMessage);
   try {
     const batch = writeBatch(db);
-    batch.update(doc(db, "bookings", bookingId), { status, updatedAt: serverTimestamp() });
+    const updatePayload = {
+      status,
+      approvedBy: currentUser.name || currentUser.line_user_id || "",
+      updatedAt: serverTimestamp()
+    };
+    batch.update(doc(db, "bookings", bookingId), updatePayload);
     batch.update(doc(db, "publicBookings", bookingId), { status, updatedAt: serverTimestamp() });
     await batch.commit();
+
+    if (typeof insertAuditLog === "function") {
+      await insertAuditLog("UPDATE_BOOKING", `ปรับสถานะคำขอจอง ${bookingId} เป็น "${status}"`, currentUser);
+    }
+
     showMessage(appMessage, `เปลี่ยนสถานะเป็น "${status}" แล้ว`, false);
     await Promise.all([loadAdminBookings(), loadPublicBookings()]);
   } catch (error) {
@@ -323,112 +436,57 @@ async function updateBookingStatus(bookingId, status, button) {
   }
 }
 
-function setAdminView(user) {
-  document.getElementById("admin-login-view").hidden = Boolean(user);
-  document.getElementById("admin-dashboard").hidden = !user;
-  document.getElementById("admin-identity").textContent = user ? user.email : "";
-  if (user) loadAdminBookings();
-}
-
-async function verifyAdmin(user) {
-  if (!user) {
-    setAdminView(null);
-    return;
-  }
-  try {
-    const userSnapshot = await getDoc(doc(db, "users", user.uid));
-    if (!userSnapshot.exists() || userSnapshot.data().role !== "admin") {
-      await signOut(auth);
-      showMessage(appMessage, "บัญชีนี้ไม่มีสิทธิ์ผู้ดูแลระบบ", true);
-      return;
-    }
-    setAdminView(user);
-  } catch (error) {
-    showMessage(appMessage, `ตรวจสอบสิทธิ์ไม่สำเร็จ: ${error.message}`, true);
-    await signOut(auth);
-  }
-}
-
+// ==========================================
+// 🔀 การสลับแท็บและการเริ่มต้นทำงาน
+// ==========================================
 function bindNavigation() {
-  document.querySelectorAll("[data-view]").forEach((button) => {
+  const tabButtons = document.querySelectorAll(".tab-button[data-view]");
+  const panels = document.querySelectorAll("main .panel");
+
+  tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      document.querySelectorAll(".app-view").forEach((view) => { view.hidden = true; });
+      clearMessage(appMessage);
+
+      tabButtons.forEach((btn) => btn.classList.remove("is-active", "active"));
+      button.classList.add("is-active", "active");
+
+      panels.forEach((panel) => { panel.hidden = true; });
       const target = document.getElementById(button.dataset.view);
-      if (!target) {
-        showMessage(componentError, "ไม่พบหน้าที่เลือก กรุณาตรวจสอบไฟล์เมนู", true);
-        return;
+      if (target) {
+        target.hidden = false;
       }
-      target.hidden = false;
-      if (button.dataset.view === "bookings-view" && firebaseReady) loadPublicBookings();
+
+      if (button.dataset.view === "bookings-view") {
+        loadPublicBookings();
+      } else if (button.dataset.view === "admin-view") {
+        loadAdminBookings();
+      }
     });
   });
 }
 
 async function initialize() {
-  try {
-    await loadComponents();
-  } catch (error) {
-    showMessage(componentError, `เตรียมเมนูไม่สำเร็จ: ${error.message}`, true);
-    return;
-  }
+  if (!(await initAuthSession())) return;
 
   publicBookingsBody = document.getElementById("public-bookings");
   adminBookingsBody = document.getElementById("admin-bookings");
-  populateRoomOptions();
+
+  await populateRoomOptions();
   populateYearFilter();
   bindNavigation();
 
-  document.getElementById("position").addEventListener("change", (event) => {
-    const isOther = event.target.value === "อื่นๆ";
-    document.getElementById("position-other-wrap").hidden = !isOther;
-    document.getElementById("position-other").required = isOther;
-  });
   document.getElementById("booking-form").addEventListener("submit", submitBooking);
   document.getElementById("month-filter").addEventListener("change", renderPublicBookings);
   document.getElementById("year-filter").addEventListener("change", renderPublicBookings);
   document.getElementById("refresh-bookings").addEventListener("click", loadPublicBookings);
   document.getElementById("refresh-admin").addEventListener("click", loadAdminBookings);
-  document.getElementById("admin-login-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const button = event.currentTarget.querySelector('button[type="submit"]');
-    setBusy(button, true, "กำลังเข้าสู่ระบบ...");
-    clearMessage(appMessage);
-    try {
-      await signInWithEmailAndPassword(
-        auth,
-        document.getElementById("admin-email").value.trim(),
-        document.getElementById("admin-password").value
-      );
-    } catch (error) {
-      showMessage(appMessage, `เข้าสู่ระบบไม่สำเร็จ: ${error.message}`, true);
-    } finally {
-      setBusy(button, false);
-    }
-  });
-  document.getElementById("admin-logout").addEventListener("click", async () => {
-    try {
-      await signOut(auth);
-      clearMessage(appMessage);
-    } catch (error) {
-      showMessage(appMessage, `ออกจากระบบไม่สำเร็จ: ${error.message}`, true);
-    }
-  });
+
   adminBookingsBody.addEventListener("click", (event) => {
     const button = event.target.closest("button[data-booking-id]");
-    if (button) updateBookingStatus(button.dataset.bookingId, button.dataset.status, button);
+    if (button) {
+      updateBookingStatus(button.dataset.bookingId, button.dataset.status, button);
+    }
   });
-
-  if (!firebaseReady) {
-    showMessage(firebaseMessage, "กรุณากรอก Firebase web app config ใน public/js/firebase-config.js ก่อนใช้งาน", true);
-    document.querySelectorAll(
-      "#booking-form input, #booking-form select, #booking-form button, " +
-      "#admin-login-form input, #admin-login-form button, " +
-      "#refresh-bookings, #refresh-admin, #admin-logout"
-    ).forEach((element) => { element.disabled = true; });
-    return;
-  }
-
-  onAuthStateChanged(auth, verifyAdmin);
 }
 
-initialize();
+document.addEventListener("DOMContentLoaded", initialize);
