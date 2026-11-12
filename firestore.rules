@@ -1,0 +1,117 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function validStatus(status) {
+      return status in ['รออนุมัติ', 'อนุมัติ', 'ไม่อนุมัติ'];
+    }
+
+    function validBooking() {
+      return request.resource.data.keys().hasAll([
+          'fullName', 'position', 'positionOther', 'phone', 'location', 'purpose',
+          'startTime', 'endTime', 'equipment', 'tables', 'chairs', 'status',
+          'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'fullName', 'position', 'positionOther', 'phone', 'location', 'purpose',
+          'startTime', 'endTime', 'equipment', 'tables', 'chairs', 'status',
+          'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() > 0
+        && request.resource.data.fullName.size() <= 120
+        && request.resource.data.position in ['ครู', 'บุคลากรทางการศึกษา', 'อื่นๆ']
+        && request.resource.data.positionOther is string
+        && request.resource.data.phone is string
+        && request.resource.data.phone.matches('^[0-9]{9,10}$')
+        && request.resource.data.location is string
+        && request.resource.data.location.size() > 0
+        && request.resource.data.purpose is string
+        && request.resource.data.purpose.size() > 0
+        && request.resource.data.startTime is timestamp
+        && request.resource.data.endTime is timestamp
+        && request.resource.data.endTime > request.resource.data.startTime
+        && request.resource.data.equipment is list
+        && request.resource.data.tables is int
+        && request.resource.data.tables >= 0
+        && request.resource.data.chairs is int
+        && request.resource.data.chairs >= 0
+        && request.resource.data.status == 'รออนุมัติ'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function matchingPublicBooking(bookingId) {
+      let publicBooking = getAfter(/databases/$(database)/documents/publicBookings/$(bookingId)).data;
+      return publicBooking.bookingId == bookingId
+        && publicBooking.fullName == request.resource.data.fullName
+        && publicBooking.location == request.resource.data.location
+        && publicBooking.startTime == request.resource.data.startTime
+        && publicBooking.endTime == request.resource.data.endTime
+        && publicBooking.status == request.resource.data.status;
+    }
+
+    function matchingPrivateBooking(bookingId) {
+      let booking = getAfter(/databases/$(database)/documents/bookings/$(bookingId)).data;
+      return booking.fullName == request.resource.data.fullName
+        && booking.location == request.resource.data.location
+        && booking.startTime == request.resource.data.startTime
+        && booking.endTime == request.resource.data.endTime
+        && booking.status == request.resource.data.status;
+    }
+
+    match /bookings/{bookingId} {
+      allow create: if validBooking() && matchingPublicBooking(bookingId);
+      allow read: if isAdmin();
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && validStatus(request.resource.data.status)
+        && request.resource.data.updatedAt == request.time
+        && matchingPublicBooking(bookingId);
+      allow delete: if false;
+    }
+
+    match /publicBookings/{bookingId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll([
+          'bookingId', 'fullName', 'location', 'startTime', 'endTime', 'status',
+          'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'bookingId', 'fullName', 'location', 'startTime', 'endTime', 'status',
+          'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.bookingId == bookingId
+        && request.resource.data.fullName is string
+        && request.resource.data.location is string
+        && request.resource.data.startTime is timestamp
+        && request.resource.data.endTime is timestamp
+        && request.resource.data.endTime > request.resource.data.startTime
+        && request.resource.data.status == 'รออนุมัติ'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && matchingPrivateBooking(bookingId);
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && validStatus(request.resource.data.status)
+        && request.resource.data.updatedAt == request.time
+        && matchingPrivateBooking(bookingId);
+      allow delete: if false;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if false;
+    }
+  }
+}

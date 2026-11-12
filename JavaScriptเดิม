@@ -1,0 +1,707 @@
+<script>
+let currentAdminName = "";
+let currentAdminStatus = "";
+let barChartInstance = null;
+let pieChartInstance = null;
+let userModalInstance = null;
+
+// 🟢 1. ฟังก์ชันดึงรายชื่อห้องแบบอัตโนมัติ (รับประกัน 100%)
+window.forceRefreshRooms = function() {
+  const ddlBlock = document.getElementById('block-room-select');
+  const ddlEdit = document.getElementById('edit-Location');
+
+  if (ddlBlock && ddlBlock.options.length <= 1) {
+    ddlBlock.innerHTML = '<option value="ALL_ROOMS">⏳ ดึงข้อมูลห้อง...</option>';
+  }
+
+  google.script.run.withSuccessHandler(function(rooms) {
+    if (!rooms || rooms.length === 0) return;
+
+    // อัปเดตตาราง Dropdown ของ "ปิดระบบจองชั่วคราว"
+    if (ddlBlock) {
+      ddlBlock.innerHTML = '<option value="ALL_ROOMS" selected>--- ปิดทุกห้อง ---</option>';
+      rooms.forEach(r => {
+        if (r.name) {
+          const opt = document.createElement('option');
+          opt.value = r.name; opt.text = r.name;
+          ddlBlock.appendChild(opt);
+        }
+      });
+    }
+
+    // อัปเดตตาราง Dropdown ของ "แก้ไขข้อมูลการจอง"
+    if (ddlEdit) {
+      const oldVal = ddlEdit.value;
+      ddlEdit.innerHTML = '';
+      rooms.forEach(r => {
+        if (r.name) {
+          const opt = document.createElement('option');
+          opt.value = r.name; opt.text = r.name;
+          ddlEdit.appendChild(opt);
+        }
+      });
+      const optOther = document.createElement('option');
+      optOther.value = 'อื่นๆ'; optOther.text = 'อื่นๆ';
+      ddlEdit.appendChild(optOther);
+      if (oldVal) ddlEdit.value = oldVal;
+    }
+  }).getRoomsData();
+};
+
+const topLabelsPlugin = {
+  id: 'topLabels',
+  afterDatasetsDraw(chart, args, pluginOptions) {
+    const { ctx, data } = chart;
+    ctx.save();
+    chart.getDatasetMeta(0).data.forEach((datapoint, index) => {
+      const value = data.datasets[0].data[index];
+      if (value > 0) {
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = '#444444'; 
+        ctx.font = 'bold 13px "Sarabun", sans-serif';
+        ctx.fillText(value, datapoint.x, datapoint.y - 5);
+      }
+    });
+    ctx.restore();
+  }
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+  const editModalEl = document.getElementById('editBookingModal');
+  if (editModalEl) {
+    let editBookingModal = new bootstrap.Modal(editModalEl);
+  }
+  const userModalEl = document.getElementById('userModal');
+  if (userModalEl) {
+    userModalInstance = new bootstrap.Modal(userModalEl);
+  }
+  
+  const currentMonth = new Date().getMonth() + 1;
+  const currentYear = new Date().getFullYear();
+  
+  if(document.getElementById('month-filter')) document.getElementById('month-filter').value = currentMonth;
+  if(document.getElementById('year-filter')) document.getElementById('year-filter').value = currentYear;
+  if(document.getElementById('admin-month-filter')) document.getElementById('admin-month-filter').value = currentMonth;
+  if(document.getElementById('admin-year-filter')) document.getElementById('admin-year-filter').value = currentYear;
+  
+  showLoading(true);
+  google.script.run.withSuccessHandler(setupInitialData).getNewsMessage();
+  
+  if (document.getElementById('dashboard-tbody')) {
+    loadDashboardData();
+  }
+  startClock(); 
+  
+  window.addEventListener('beforeprint', () => {
+    const pieContainer = document.querySelector('.chart-col-pie canvas');
+    if (pieContainer) {
+      pieContainer.style.width = '200px';
+      pieContainer.style.height = '200px';
+      pieContainer.setAttribute('width', 200);
+      pieContainer.setAttribute('height', 200);
+    }
+    if (pieChartInstance) pieChartInstance.resize(200, 200);
+    if (barChartInstance) barChartInstance.resize();
+  });
+
+  if(document.getElementById('position')) {
+    document.getElementById('position').addEventListener('change', function() {
+      document.getElementById('position-other-wrapper').style.display = this.value === 'อื่นๆ' ? 'block' : 'none'; 
+    });
+  }
+  
+  if(document.getElementById('location')) {
+    document.getElementById('location').addEventListener('change', function() {
+      document.getElementById('location-other-wrapper').style.display = this.value === 'อื่นๆ' ? 'block' : 'none'; 
+    });
+  }
+  
+  if(document.getElementById('booking-form')) {
+    document.getElementById('booking-form').addEventListener('submit', function(e) { 
+      e.preventDefault(); 
+      showLoading(true); 
+      const form = this; 
+      const formData = new FormData(form); 
+      const formObject = {}; 
+      formObject.FullName = formData.get('FullName'); 
+      formObject.Position = formData.get('Position');
+      formObject.PositionOther = formData.get('PositionOther'); 
+      formObject.Phone = formData.get('Phone'); 
+      formObject.Location = formData.get('Location');
+      formObject.LocationOther = formData.get('LocationOther'); 
+      formObject.Purpose = formData.get('Purpose'); 
+      formObject.StartTime = formData.get('StartTime');
+      formObject.EndTime = formData.get('EndTime'); 
+      formObject.Equipment = formData.getAll('Equipment'); 
+      formObject.Tables = formData.get('Tables');
+      formObject.Chairs = formData.get('Chairs'); 
+      document.getElementById('conflict-note').style.display = 'none'; 
+      
+      const layoutFileInput = document.getElementById('layout-file'); 
+      const attachmentFileInput = document.getElementById('attachment-file'); 
+      const filesToProcess = []; 
+      if (layoutFileInput && layoutFileInput.files.length > 0) {
+        filesToProcess.push(readFileAsBase64(layoutFileInput.files[0]).then(result => formObject.LayoutFile = result)); 
+      } 
+      if (attachmentFileInput && attachmentFileInput.files.length > 0) {
+        filesToProcess.push(readFileAsBase64(attachmentFileInput.files[0]).then(result => formObject.AttachmentFile = result)); 
+      }
+      
+      Promise.all(filesToProcess).then(() => {
+        google.script.run.withSuccessHandler(function(response) { 
+          showLoading(false);
+          if (response.success) { 
+            Swal.fire({ icon: 'success', title: 'สำเร็จ!', text: 'บันทึกข้อมูลการจองเรียบร้อย' });
+            form.reset(); 
+            if(document.getElementById('position-other-wrapper')) document.getElementById('position-other-wrapper').style.display = 'none'; 
+            if(document.getElementById('location-other-wrapper')) document.getElementById('location-other-wrapper').style.display = 'none'; 
+            loadDashboardData(); 
+          } else { 
+            Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด!', text: response.message }); 
+            if (response.message.includes("มีการจองแล้ว")) { 
+              if(document.getElementById('conflict-note')) document.getElementById('conflict-note').style.display = 'block'; 
+            } 
+          }
+        }).withFailureHandler(err => { 
+          showLoading(false); 
+          Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาดรุนแรง', text: err.message }); 
+        }).submitBooking(formObject); 
+      }); 
+    });
+  }
+  
+  if(document.getElementById('month-filter')) document.getElementById('month-filter').addEventListener('change', loadDashboardData);
+  if(document.getElementById('year-filter')) document.getElementById('year-filter').addEventListener('change', loadDashboardData);
+  if(document.getElementById('admin-month-filter')) document.getElementById('admin-month-filter').addEventListener('change', loadAdminData);
+  if(document.getElementById('admin-year-filter')) document.getElementById('admin-year-filter').addEventListener('change', loadAdminData);
+  if(document.getElementById('dashboard-tab')) document.getElementById('dashboard-tab').addEventListener('click', loadDashboardData);
+  
+  if(document.getElementById('admin-login-form')) {
+    document.getElementById('admin-login-form').addEventListener('submit', function(e) { 
+      e.preventDefault(); 
+      showLoading(true, "กำลังเข้าสู่ระบบ..."); 
+      const credentials = { id: document.getElementById('admin-id').value, pass: document.getElementById('admin-pass').value }; 
+      google.script.run.withSuccessHandler(function(response) { 
+        showLoading(false); 
+        if (response.success) { 
+          currentAdminName = response.name;
+          currentAdminStatus = response.status;
+          
+          if(document.getElementById('global-header-tabs')) document.getElementById('global-header-tabs').style.display = 'none';
+          if(document.getElementById('myTabContent')) document.getElementById('myTabContent').classList.add('admin-mode');
+          if(document.getElementById('main-global-container')) {
+            document.getElementById('main-global-container').classList.remove('container');
+            document.getElementById('main-global-container').style.maxWidth = '100%';
+            document.getElementById('main-global-container').style.padding = '0';
+          }
+          if(document.getElementById('admin-login-view')) document.getElementById('admin-login-view').style.display = 'none'; 
+          if(document.getElementById('admin-dashboard-view')) document.getElementById('admin-dashboard-view').style.display = 'block'; 
+          if(document.getElementById('sidebar-user-display')) document.getElementById('sidebar-user-display').innerText = currentAdminName + " (" + currentAdminStatus + ")";
+          
+          switchAdminPanel('admin-panel-charts');
+          initAdminDateFilters();
+          loadAdminData(); 
+          
+          // 🟢 2. ดึงข้อมูลห้องทันทีที่เข้าระบบแอดมิน
+          window.forceRefreshRooms();
+
+        } else { 
+          Swal.fire('ผิดพลาด', response.message, 'error'); 
+        } 
+      }).adminLogin(credentials); 
+    });
+  }
+  
+  // 🟢 3. ผูกคำสั่งให้ดึงข้อมูลห้องทุกครั้งที่คลิกเมนูในแถบด้านข้าง
+  document.querySelectorAll('.sidebar-link').forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const targetPanel = this.dataset.target;
+      if (targetPanel === 'logout') {
+        logoutAdmin();
+      } else {
+        if (currentAdminStatus === 'ครู' && (targetPanel === 'admin-panel-users' || targetPanel === 'admin-panel-logs')) {
+          Swal.fire('ปฏิเสธการเข้าถึง', 'สิทธิ์ระดับครูไม่สามารถเข้าถึงการจัดการส่วนนี้ได้', 'warning');
+          return;
+        }
+        document.querySelectorAll('.sidebar-item').forEach(li => li.classList.remove('active'));
+        this.parentElement.classList.add('active');
+        switchAdminPanel(targetPanel);
+        
+        // 🟢 เรียกคำสั่งรีเฟรชข้อมูลห้องทุกครั้งที่มีการเปลี่ยนหน้า!
+        window.forceRefreshRooms();
+      }
+    });
+  });
+
+  if(document.getElementById('add-user-btn')) {
+    document.getElementById('add-user-btn').addEventListener('click', function() {
+      document.getElementById('user-submit-form').reset();
+      document.getElementById('userFormTitle').innerText = "เพิ่มผู้ใช้งานใหม่"; 
+      document.getElementById('user-is-new').value = "true";
+      document.getElementById('user-row-num').value = "";
+      document.getElementById('user-username').disabled = false;
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('userModal')).show();
+    });
+  }
+  
+  if(document.getElementById('users-tbody')) {
+    document.getElementById('users-tbody').addEventListener('click', function(e) {
+      let editBtn = e.target.closest('.edit-user-btn');
+      let deleteBtn = e.target.closest('.delete-user-btn');
+      
+      if (editBtn) {
+        document.getElementById('user-submit-form').reset();
+        document.getElementById('userFormTitle').innerText = "แก้ไขข้อมูลผู้ใช้งาน";
+        document.getElementById('user-is-new').value = "false";
+        document.getElementById('user-row-num').value = editBtn.dataset.row;
+        document.getElementById('user-username').value = editBtn.dataset.username;
+        document.getElementById('user-password').value = editBtn.dataset.password;
+        document.getElementById('user-fullname').value = editBtn.dataset.fullname;
+        document.getElementById('user-status').value = editBtn.dataset.status;
+        document.getElementById('user-username').disabled = true;
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('userModal')).show();
+      }
+      if (deleteBtn) {
+        let rowNum = deleteBtn.dataset.row;
+        let uName = deleteBtn.dataset.name;
+        Swal.fire({ title: 'ยืนยันการลบ?', text: `คุณต้องการลบผู้ใช้งาน ${uName} ใช่หรือไม่?`, icon: 'warning', showCancelButton: true, confirmButtonText: 'ลบเลย', cancelButtonText: 'ยกเลิก'
+        }).then(res => {
+          if(res.isConfirmed) {
+            showLoading(true, "กำลังลบผู้ใช้งาน...");
+            google.script.run.withSuccessHandler(function(response) {
+              showLoading(false);
+              if(response.success) { loadUsersTable(); Swal.fire('สำเร็จ', 'ลบผู้ใช้งานเรียบร้อยแล้ว', 'success'); }
+            }).deleteUser(rowNum, uName, currentAdminName);
+          }
+        });
+      }
+    });
+  }
+  
+  if(document.getElementById('user-submit-form')) {
+    document.getElementById('user-submit-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      let userData = {
+        isNew: document.getElementById('user-is-new').value === 'true',
+        rowNum: document.getElementById('user-row-num').value,
+        username: document.getElementById('user-username').value,
+        password: document.getElementById('user-password').value,
+        fullname: document.getElementById('user-fullname').value,
+        status: document.getElementById('user-status').value
+      };
+      showLoading(true, "กำลังบันทึกข้อมูล...");
+      google.script.run.withSuccessHandler(function(res) {
+        showLoading(false);
+        if(res.success) {
+          bootstrap.Modal.getOrCreateInstance(document.getElementById('userModal')).hide();
+          loadUsersTable();
+          Swal.fire('สำเร็จ', 'บันทึกข้อมูลผู้ใช้งานเรียบร้อยแล้ว', 'success');
+        } else { Swal.fire('ผิดพลาด', res.message, 'error'); }
+      }).saveUser(userData, currentAdminName);
+    });
+  }
+  
+  if(document.getElementById('save-news-btn')) {
+    document.getElementById('save-news-btn').addEventListener('click', function() {
+      showLoading(true); 
+      const newsText = document.getElementById('admin-news-textarea').value;
+      google.script.run.withSuccessHandler(response => { 
+        showLoading(false); 
+        Swal.fire(response.success ? 'สำเร็จ' : 'ผิดพลาด', response.message, response.success ? 'success' : 'error'); 
+      }).updateAdminNews(newsText, currentAdminName); 
+    });
+  }
+  
+  if(document.getElementById('admin-table')) {
+    document.getElementById('admin-table').addEventListener('click', function(e) {
+        const deleteBtn = e.target.closest('.delete-btn');
+        const editBtn = e.target.closest('.edit-btn');
+        if (deleteBtn) {
+            const uniqueId = deleteBtn.dataset.id;
+            Swal.fire({ title: 'ยืนยันการลบ?', text: "คุณจะไม่สามารถกู้คืนข้อมูลนี้ได้!", icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33', cancelButtonColor: '#3085d6', confirmButtonText: 'ใช่, ลบเลย!', cancelButtonText: 'ยกเลิก'
+            }).then((result) => { 
+              if (result.isConfirmed) { 
+                showLoading(true);
+                google.script.run.withSuccessHandler(response => { 
+                  showLoading(false);
+                  Swal.fire(response.success ? 'สำเร็จ' : 'ผิดพลาด', response.message, response.success ? 'success' : 'error'); 
+                  if (response.success) loadAdminData(); 
+                }).deleteBooking(uniqueId, currentAdminName); 
+              } 
+            });
+        }
+        if (editBtn) {
+            const uniqueId = editBtn.dataset.id;
+            showLoading(true);
+            google.script.run.withSuccessHandler(bookingData => {
+              showLoading(false);
+              if (bookingData) {
+                document.getElementById('edit-uniqueId').value = bookingData.uniqueId;
+                document.getElementById('edit-FullName').value = bookingData.fullName;
+                document.getElementById('edit-Phone').value = bookingData.phone;
+                document.getElementById('edit-Location').value = bookingData.location;
+                document.getElementById('edit-Purpose').value = bookingData.purpose;
+                document.getElementById('edit-StartTime').value = bookingData.startTime.slice(0, 16);
+                document.getElementById('edit-EndTime').value = bookingData.endTime.slice(0, 16);
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('editBookingModal')).show();
+              } else { Swal.fire('ผิดพลาด', 'ไม่พบข้อมูลการจอง หรือเกิดข้อผิดพลาดในการโหลด', 'error'); }
+            }).getBookingById(uniqueId);
+        }
+    });
+    
+    document.getElementById('admin-table').addEventListener('change', function(e) {
+      if (e.target.classList.contains('status-select')) { 
+        const uniqueId = e.target.dataset.id; 
+        const newStatus = e.target.value; 
+        showLoading(true);
+        google.script.run.withSuccessHandler(response => { 
+          showLoading(false); 
+          if (!response.success) Swal.fire('ผิดพลาด', response.message, 'error'); 
+        }).updateBookingStatus(uniqueId, newStatus, currentAdminName); 
+      } 
+    });
+  }
+  
+  if(document.getElementById('blockout-form')) {
+    document.getElementById('blockout-form').addEventListener('submit', function(e) { 
+      e.preventDefault(); 
+      const period = { 
+        room: document.getElementById('block-room-select').value, 
+        start: document.getElementById('block-start-time').value, 
+        end: document.getElementById('block-end-time').value
+      }; 
+      if (new Date(period.end) <= new Date(period.start)) { 
+        Swal.fire('ผิดพลาด', 'เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่มต้น', 'error'); return; 
+      } 
+      showLoading(true);
+      google.script.run.withSuccessHandler(response => { 
+        showLoading(false); 
+        if (response.success) { 
+          Swal.fire('สำเร็จ', 'เพิ่มช่วงเวลาปิดระบบเรียบร้อย', 'success'); 
+          loadAdminData(); 
+          this.reset(); 
+        } else { Swal.fire('ผิดพลาด', response.message, 'error'); }
+      }).addBlockoutPeriod(period, currentAdminName); 
+    });
+  }
+  
+  if(document.getElementById('admin-dashboard-view')) {
+    document.getElementById('admin-dashboard-view').addEventListener('click', function(e) { 
+      if (e.target.classList.contains('delete-blockout-btn')) { 
+        const id = e.target.dataset.id; 
+        Swal.fire({ title: 'ยืนยันการลบ?', text: "คุณต้องการยกเลิกการปิดระบบในช่วงเวลานี้ใช่หรือไม่?", icon: 'warning', showCancelButton: true, confirmButtonText: 'ใช่, ลบเลย', cancelButtonText: 'ยกเลิก'
+        }).then(result => { 
+          if (result.isConfirmed) { 
+            showLoading(true);
+            google.script.run.withSuccessHandler(response => { 
+              showLoading(false); 
+              if (response.success) loadAdminData(); 
+              else Swal.fire('ผิดพลาด', response.message, 'error'); 
+            }).deleteBlockoutPeriod(id, currentAdminName); 
+          } 
+        }); 
+      } 
+    });
+  }
+  
+  if(document.getElementById('edit-booking-form')) {
+    document.getElementById('edit-booking-form').addEventListener('submit', function(e) { 
+      e.preventDefault(); 
+      showLoading(true); 
+      const updatedData = { 
+        uniqueId: document.getElementById('edit-uniqueId').value, 
+        FullName: document.getElementById('edit-FullName').value, 
+        Phone: document.getElementById('edit-Phone').value, 
+        Location: document.getElementById('edit-Location').value, 
+        Purpose: document.getElementById('edit-Purpose').value, 
+        StartTime: document.getElementById('edit-StartTime').value, 
+        EndTime: document.getElementById('edit-EndTime').value,
+      }; 
+      google.script.run.withSuccessHandler(response => { 
+          showLoading(false); 
+          if (response.success) { 
+              bootstrap.Modal.getOrCreateInstance(document.getElementById('editBookingModal')).hide();
+              Swal.fire('สำเร็จ!', response.message, 'success'); 
+              loadAdminData(); 
+          } else { Swal.fire('เกิดข้อผิดพลาด!', response.message, 'error'); } 
+      }).updateBooking(updatedData, currentAdminName);
+    });
+  }
+
+}); // สิ้นสุด DOMContentLoaded
+
+// ==========================================
+// ฟังก์ชันย่อยทั้งหมดให้อยู่ข้างนอก
+// ==========================================
+function showLoading(show, message = "กำลังบันทึกข้อมูล...") { 
+  const overlay = document.getElementById('loading-overlay'); 
+  if(!overlay) return;
+  overlay.querySelector('p').innerText = message;
+  overlay.style.display = show ? 'flex' : 'none'; 
+}
+
+function setupInitialData(newsMessage) { 
+  if (newsMessage && newsMessage.trim() !== "") Swal.fire({ title: '📢 แจ้งข้อมูลข่าวสาร', text: newsMessage, confirmButtonText: 'รับทราบ' }); 
+  showLoading(false); 
+}
+
+function loadDashboardData() { 
+  const tbody = document.getElementById('dashboard-tbody');
+  if(!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="5" class="text-center">กำลังโหลดข้อมูล...</td></tr>'; 
+  const selectedMonth = document.getElementById('month-filter').value; 
+  const selectedYear = document.getElementById('year-filter').value; 
+  google.script.run.withSuccessHandler(displayDashboardData).getBookings(selectedMonth, selectedYear); 
+}
+
+function displayDashboardData(bookings) { 
+  const tbody = document.getElementById('dashboard-tbody'); 
+  if(!tbody) return;
+  tbody.innerHTML = ''; 
+  if (!bookings || bookings.length === 0) { 
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center">ไม่มีข้อมูลการจองในเดือนหรือปีที่เลือก</td></tr>';
+    return; 
+  } 
+  bookings.forEach(b => { 
+    const displayOptions = { timeZone: 'Asia/Bangkok', dateStyle: 'medium', timeStyle: 'short' }; 
+    const displayStartTime = new Date(b.startTime).toLocaleString('th-TH', displayOptions); 
+    const displayEndTime = new Date(b.endTime).toLocaleString('th-TH', displayOptions);
+    const row = `<tr><td>${b.fullName}</td><td>${b.location}</td><td>${displayStartTime}</td><td>${displayEndTime}</td><td><span class="status-badge status-${b.status}">${b.status}</span></td></tr>`;
+    tbody.innerHTML += row; 
+  }); 
+}
+
+function loadAdminData() { 
+  showLoading(true, "กำลังโหลดข้อมูลระบบ..."); 
+  const selectedMonth = document.getElementById('admin-month-filter') ? document.getElementById('admin-month-filter').value : ""; 
+  const selectedYear = document.getElementById('admin-year-filter') ? document.getElementById('admin-year-filter').value : ""; 
+  google.script.run.withSuccessHandler(displayAdminData).getAdminData(selectedMonth, selectedYear); 
+}
+
+function displayAdminData(data) {
+    if(document.getElementById('admin-news-textarea')) document.getElementById('admin-news-textarea').value = data.news || '';
+    const bookingsTbody = document.getElementById('admin-tbody');
+    if(bookingsTbody) {
+      bookingsTbody.innerHTML = '';
+      if (!data.bookings || data.bookings.length === 0) {
+        bookingsTbody.innerHTML = '<tr><td colspan="8" class="text-center">ไม่มีข้อมูลการจองในเดือนหรือปีที่เลือก</td></tr>';
+      } else {
+        data.bookings.forEach(b => {
+          const layoutIcon = b.layoutUrl ? `<a href="${b.layoutUrl}" target="_blank" class="btn btn-sm btn-outline-info" title="ดูผัง"><i class="fas fa-map-marked-alt"></i></a>` : '';
+          const attachmentIcon = b.attachmentUrl ? `<a href="${b.attachmentUrl}" target="_blank" class="btn btn-sm btn-outline-info" title="ดูเอกสาร"><i class="fas fa-paperclip"></i></a>` : '';
+          const statusOptions = `
+            <select class="form-select form-select-sm status-select" data-id="${b.uniqueId}">
+              <option value="รออนุมัติ" ${b.status === 'รออนุมัติ' ? 'selected' : ''}>รออนุมัติ</option>
+              <option value="อนุมัติ" ${b.status === 'อนุมัติ' ? 'selected' : ''}>อนุมัติ</option>
+              <option value="ไม่อนุมัติ" ${b.status === 'ไม่อนุมัติ' ? 'selected' : ''}>ไม่อนุมัติ</option>
+              <option value="จัดสถานที่แล้ว" ${b.status === 'จัดสถานที่แล้ว' ? 'selected' : ''}>จัดสถานที่แล้ว</option>
+            </select>`;
+          const adminDisplayDate = new Date(b.startTime).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          const actionButtons = `<button class="btn btn-primary btn-sm edit-btn" data-id="${b.uniqueId}" title="แก้ไข"><i class="fas fa-pencil-alt"></i></button> <button class="btn btn-danger btn-sm delete-btn" data-id="${b.uniqueId}" title="ลบ"><i class="fas fa-trash"></i></button>`;
+          const row = `<tr>
+            <td class="text-nowrap">${adminDisplayDate}</td>
+            <td class="text-nowrap">${b.fullName}</td>
+            <td class="text-nowrap">${b.location}</td>
+            <td class="text-wrap" style="min-width: 200px; max-width: 350px; word-break: break-word;">${b.purpose}</td>
+            <td class="text-center text-nowrap">${layoutIcon}</td>
+            <td class="text-center text-nowrap">${attachmentIcon}</td>
+            <td class="text-nowrap" style="min-width: 130px;">${statusOptions}</td>
+            <td class="text-center text-nowrap" style="min-width: 100px;">${actionButtons}</td>
+          </tr>`;
+          bookingsTbody.innerHTML += row;
+        });
+      }
+    }
+    displayBlockedPeriods(data.blockedPeriods);
+    showLoading(false);
+}
+
+function displayBlockedPeriods(periods) { 
+  const blockedTbody = document.getElementById('blocked-periods-tbody');
+  if(!blockedTbody) return;
+  blockedTbody.innerHTML = ''; 
+  if (!periods || periods.length === 0) {
+    blockedTbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">ยังไม่มีการปิดระบบ</td></tr>';
+    return; 
+  } 
+  const displayOptions = { timeZone: 'Asia/Bangkok', year: '2-digit', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+  periods.forEach(p => { 
+    const roomDisplay = p.room === 'ALL_ROOMS' ? '<strong>ทุกห้อง</strong>' : p.room; 
+    const displayStart = new Date(p.start).toLocaleString('th-TH', displayOptions); 
+    const displayEnd = new Date(p.end).toLocaleString('th-TH', displayOptions); 
+    const row = `<tr><td>${roomDisplay}</td><td>${displayStart}</td><td>${displayEnd}</td><td><button class="btn btn-outline-danger btn-sm delete-blockout-btn" data-id="${p.id}">ลบ</button></td></tr>`;
+    blockedTbody.innerHTML += row; 
+  }); 
+}
+
+function readFileAsBase64(file) { 
+  return new Promise((resolve, reject) => { 
+    const reader = new FileReader();
+    reader.onload = () => { 
+      const result = { name: file.name, type: file.type, bytes: reader.result.split(',')[1] }; 
+      resolve(result); 
+    }; 
+    reader.onerror = reject; 
+    reader.readAsDataURL(file); 
+  }); 
+}
+
+function switchAdminPanel(panelId) {
+  document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
+  const targetPanel = document.getElementById(panelId);
+  if(targetPanel) targetPanel.classList.add('active');
+  
+  if (panelId === 'admin-panel-charts') {
+    fetchAndRenderCharts();
+  } else if (panelId === 'admin-panel-users') {
+    loadUsersTable();
+  } else if (panelId === 'admin-panel-logs') {
+    loadLogsTable();
+  }
+}
+
+function logoutAdmin() {
+  currentAdminName = "";
+  currentAdminStatus = "";
+  if(document.getElementById('global-header-tabs')) document.getElementById('global-header-tabs').style.display = 'block';
+  if(document.getElementById('myTabContent')) document.getElementById('myTabContent').classList.remove('admin-mode');
+  if(document.getElementById('main-global-container')) {
+    document.getElementById('main-global-container').classList.add('container');
+    document.getElementById('main-global-container').style.maxWidth = '1000px';
+    document.getElementById('main-global-container').style.padding = '2rem';
+  }
+  if(document.getElementById('admin-dashboard-view')) document.getElementById('admin-dashboard-view').style.display = 'none'; 
+  if(document.getElementById('admin-login-view')) document.getElementById('admin-login-view').style.display = 'block'; 
+  if(document.getElementById('admin-id')) document.getElementById('admin-id').value = "";
+  if(document.getElementById('admin-pass')) document.getElementById('admin-pass').value = "";
+  if(document.getElementById('form-tab')) document.getElementById('form-tab').click();
+}
+
+function startClock() {
+  setInterval(() => {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('th-TH', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+    const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const clockBox = document.getElementById('sidebar-clock');
+    if (clockBox) {
+      clockBox.innerHTML = `<div><i class="far fa-calendar-alt me-1"></i> ${dateStr}</div><div class="clock-box mt-1 text-info fw-bold" style="font-size: 1.15rem;"><i class="far fa-clock me-1"></i> ${timeStr}</div>`;
+    }
+  }, 1000);
+}
+
+function initAdminDateFilters() {
+  let today = new Date();
+  let lastMonth = new Date();
+  lastMonth.setDate(today.getDate() - 30);
+  if(document.getElementById('chart-end-date')) document.getElementById('chart-end-date').value = today.toISOString().slice(0, 10);
+  if(document.getElementById('chart-start-date')) document.getElementById('chart-start-date').value = lastMonth.toISOString().slice(0, 10);
+  if(document.getElementById('chart-filter-btn')) document.getElementById('chart-filter-btn').addEventListener('click', fetchAndRenderCharts);
+}
+
+function fetchAndRenderCharts() {
+  const startStr = document.getElementById('chart-start-date') ? document.getElementById('chart-start-date').value : null;
+  const endStr = document.getElementById('chart-end-date') ? document.getElementById('chart-end-date').value : null;
+  if(startStr && endStr) google.script.run.withSuccessHandler(renderChartsData).getChartData(startStr, endStr);
+}
+
+function renderChartsData(data) {
+  let totalCount = 0; let approvedCount = 0; let pendingCount = 0; let rejectedCount = 0;
+  for (const [status, count] of Object.entries(data.statuses)) {
+    totalCount += count;
+    if (status === 'อนุมัติ' || status === 'จัดสถานที่แล้ว') approvedCount += count;
+    else if (status === 'รออนุมัติ') pendingCount += count;
+    else if (status === 'ไม่อนุมัติ' || status === 'ยกเลิก') rejectedCount += count;
+  }
+  if(document.getElementById('kpi-total')) document.getElementById('kpi-total').innerText = totalCount;
+  if(document.getElementById('kpi-approved')) document.getElementById('kpi-approved').innerText = approvedCount;
+  if(document.getElementById('kpi-pending')) document.getElementById('kpi-pending').innerText = pendingCount;
+  if(document.getElementById('kpi-rejected')) document.getElementById('kpi-rejected').innerText = rejectedCount;
+
+  const startInput = document.getElementById('chart-start-date').value;
+  const endInput = document.getElementById('chart-end-date').value;
+  const startDateFormated = new Date(startInput).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+  const endDateFormated = new Date(endInput).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+  
+  if(document.getElementById('print-date-range')) document.getElementById('print-date-range').innerText = `ประจำวันที่ ${startDateFormated} ถึง ${endDateFormated}`;
+
+  const roomLabels = Object.keys(data.rooms);
+  const roomValues = Object.values(data.rooms);
+  
+  if (barChartInstance) barChartInstance.destroy();
+  if(document.getElementById('roomBarChart')) {
+    let ctxBar = document.getElementById('roomBarChart').getContext('2d');
+    barChartInstance = new Chart(ctxBar, {
+      type: 'bar',
+      data: { labels: roomLabels, datasets: [{ label: 'จำนวนการจอง (ครั้ง)', data: roomValues, backgroundColor: '#2b7bc6', borderColor: 'transparent', borderWidth: 0, borderRadius: 4, borderSkipped: false, maxBarThickness: 45 }] },
+      options: { responsive: true, maintainAspectRatio: false, animation: { duration: 0 }, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 }, grace: '15%' }, x: { grid: { display: false } } } },
+      plugins: [topLabelsPlugin] 
+    });
+  }
+
+  const statusLabels = Object.keys(data.statuses);
+  const statusValues = Object.values(data.statuses);
+  const statusColors = statusLabels.map(status => {
+    if (status === 'อนุมัติ' || status === 'จัดสถานที่แล้ว') return '#198754';
+    if (status === 'รออนุมัติ') return '#ffc107';
+    if (status === 'ไม่อนุมัติ' || status === 'ยกเลิก') return '#dc3545';
+    return '#6c757d';
+  });
+
+  if (pieChartInstance) pieChartInstance.destroy();
+  if(document.getElementById('statusPieChart')) {
+    let ctxPie = document.getElementById('statusPieChart').getContext('2d');
+    pieChartInstance = new Chart(ctxPie, {
+      type: 'doughnut',
+      data: { labels: statusLabels, datasets: [{ data: statusValues, backgroundColor: statusColors, borderColor: '#ffffff', borderWidth: 2, hoverOffset: 0 }] },
+      options: { responsive: true, maintainAspectRatio: false, animation: { duration: 0 }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 10, font: { size: 11 } } } }, cutout: '55%', layout: { padding: { left: 15, right: 15, top: 10, bottom: 5 } } }
+    });
+  }
+
+  let recentTbody = document.getElementById('recent-bookings-tbody');
+  if(recentTbody) {
+    recentTbody.innerHTML = '';
+    if (!data.recent || data.recent.length === 0) {
+      recentTbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted p-3">ไม่มีประวัติการจองในช่วงเวลาที่เลือก</td></tr>';
+      return;
+    }
+    data.recent.forEach(r => {
+      let rDate = new Date(r.startTime).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Bangkok' });
+      let row = `<tr><td><strong>${r.fullName}</strong></td><td>${r.location}</td><td>${rDate}</td><td><span class="status-badge status-${r.status}">${r.status}</span></td></tr>`;
+      recentTbody.innerHTML += row;
+    });
+  }
+}
+
+function loadUsersTable() {
+  google.script.run.withSuccessHandler(function(users) {
+    let tbody = document.getElementById('users-tbody');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+    if(users.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center">ไม่พบข้อมูลผู้ใช้งาน</td></tr>';
+      return;
+    }
+    users.forEach(u => {
+      let row = `<tr><td>${u.username}</td><td>******</td><td>${u.fullname}</td><td><span class="badge ${u.status === 'Admin' ? 'bg-danger' : 'bg-success'}">${u.status}</span></td><td><button class="btn btn-sm btn-warning edit-user-btn" data-row="${u.rowNum}" data-username="${u.username}" data-password="${u.password}" data-fullname="${u.fullname}" data-status="${u.status}"><i class="fas fa-edit"></i></button> <button class="btn btn-sm btn-danger delete-user-btn" data-row="${u.rowNum}" data-name="${u.fullname}"><i class="fas fa-trash"></i></button></td></tr>`;
+      tbody.innerHTML += row;
+    });
+  }).getUsers();
+}
+
+function loadLogsTable() {
+  google.script.run.withSuccessHandler(function(logs) {
+    let tbody = document.getElementById('logs-tbody');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+    if(logs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="3" class="text-center">ไม่พบบันทึกประวัติการใช้งาน</td></tr>';
+      return;
+    }
+    logs.forEach(l => { 
+      tbody.innerHTML += `<tr><td>${l.time}</td><td>${l.user}</td><td>${l.action}</td></tr>`;
+    });
+  }).getLogs();
+}
+</script>

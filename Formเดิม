@@ -1,0 +1,121 @@
+<form id="booking-form" class="row g-3">
+  <div class="col-md-6">
+    <label for="FullName" class="form-label">ชื่อ-สกุล ผู้จอง</label>
+    <input type="text" class="form-control" id="FullName" name="FullName" pattern="[ก-๙a-zA-Z\s]+" title="กรุณากรอกเฉพาะตัวอักษร" required>
+  </div>
+  <div class="col-md-6">
+    <label for="position" class="form-label">ตำแหน่ง</label>
+    <select id="position" name="Position" class="form-select" required>
+      <option selected disabled value="">เลือก...</option>
+      <option>ครู</option>
+      <option>บุคคลกรทางการศึกษา</option>
+      <option>อื่นๆ</option>
+    </select>
+  </div>
+  <div class="col-12" id="position-other-wrapper" style="display:none;">
+    <label for="position-other" class="form-label">โปรดระบุตำแหน่ง</label>
+    <input type="text" class="form-control" id="position-other" name="PositionOther">
+  </div>
+ 
+  <div class="col-md-6">
+    <label for="Phone" class="form-label">เบอร์โทรศัพท์</label>
+    <input type="tel" class="form-control" id="Phone" name="Phone" pattern="[0-9]{9,10}" title="กรุณากรอกตัวเลข 9-10 หลัก" required>
+  </div>
+  <div class="col-md-6">
+    <label for="location" class="form-label">มีความประสงค์จะขออนุญาตใช้อาคารสถานที่</label>
+    <select id="location" name="Location" class="form-select" required>
+      <option selected disabled value="">เลือกสถานที่...</option>
+      <option value="หอประชุม">หอประชุม รองรับ 1500 คน</option>
+      <option value="โดมราชพฤกษ์">โดมราชพฤกษ์ รองรับ 3000 คน</option>
+      <option value="ห้องประชุม Auditorium">ห้องประชุม Auditorium รองรับ 100 คน</option>
+      <option value="ห้องประชุมราชพฤกษ์">ห้องประชุมราชพฤกษ์ รองรับ 30 คน</option>
+      <option value="ห้องทูบี">ห้องทูบี รองรับ 200 คน</option>
+      <option value="ห้องสมาคมผู้ปกครองและครู">ห้องสมาคมผู้ปกครองและครู รองรับ 30 คน</option>
+      <option value="ห้องประชุมช่อราชพฤกษ์">ห้องประชุมช่อราชพฤกษ์ รองรับ 180 คน</option>
+      <option value="อื่นๆ">อื่นๆ</option>
+    </select>
+  </div>
+  <div class="col-12" id="location-other-wrapper" style="display:none;">
+    <label for="location-other" class="form-label">โปรดระบุสถานที่</label>
+    <input type="text" class="form-control" id="location-other" name="LocationOther">
+  </div>
+
+  <div class="col-12">
+    <label for="Purpose" class="form-label">ข้าพเจ้าขอใช้อาคารสถานที่เพื่อ</label>
+    <input type="text" class="form-control" id="Purpose" name="Purpose" required>
+  </div>
+
+  <div class="col-md-6">
+    <label for="start-time" class="form-label">วันที่และเวลาที่เริ่มใช้</label>
+    <input type="datetime-local" class="form-control" id="start-time" name="StartTime" required>
+  </div>
+  <div class="col-md-6">
+    <label for="end-time" class="form-label">วันที่และเวลาที่สิ้นสุด</label>
+    <input type="datetime-local" class="form-control" id="end-time" name="EndTime" required>
+  </div>
+ 
+  <div class="col-12">
+    <label class="form-label">ข้าพเจ้าขอใช้บริการวัสดุและอุปกรณ์ ดังนี้ (เลือกได้มากกว่า 1)</label>
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" name="Equipment" value="เครื่องเสียง" id="eq1">
+      <label class="form-check-label" for="eq1">เครื่องเสียง</label>
+    </div>
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" name="Equipment" value="Projector" id="eq2">
+      <label class="form-check-label" for="eq2">Projector</label>
+    </div>
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" name="Equipment" value="คอมพิวเตอร์" id="eq3">
+      <label class="form-check-label" for="eq3">คอมพิวเตอร์</label>
+    </div>
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" name="Equipment" value="จอภาพโปรเจคเตอร์" id="eq4">
+      <label class="form-check-label" for="eq4">จอภาพโปรเจคเตอร์</label>
+    </div>
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" name="Equipment" value="ไมโครโฟน" id="eq5">
+      <label class="form-check-label" for="eq5">ไมโครโฟน</label>
+    </div>
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" name="Equipment" value="ไม่ต้องการ" id="eq6">
+      <label class="form-check-label" for="eq6">ไม่ต้องการ</label>
+    </div>
+  </div>
+ 
+  <div class="col-md-6">
+    <label for="tables" class="form-label">โต๊ะ จำนวน (ตัว)</label>
+    <input type="number" class="form-control" id="tables" name="Tables" min="0" value="0">
+  </div>
+  <div class="col-md-6">
+    <label for="chairs" class="form-label">เก้าอี้ จำนวน (ตัว)</label>
+    <input type="number" class="form-control" id="chairs" name="Chairs" min="0" value="0">
+  </div>
+
+  <div class="col-md-6">
+    <label for="layout-file" class="form-label">ผังการวางโต๊ะ/เก้าอี้ (ถ้ามี, .jpg, .png)</label>
+    <input class="form-control" type="file" id="layout-file" name="LayoutFile" accept=".jpg,.jpeg,.png">
+  </div>
+  <div class="col-md-6">
+    <label for="attachment-file" class="form-label">เอกสารแนบ (สำหรับบุคคลภายนอก)</label>
+    <input class="form-control" type="file" id="attachment-file">
+  </div>
+
+  <div class="col-12 mt-4">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="agreement" required>
+      <label class="form-check-label" for="agreement">
+        ข้าพเจ้าขอรับรองว่า จะมิให้เกิดเหตุการณ์ใดๆ อันจะนำมาซึ่งความเสียหายแก่ทรัพย์สินของโรงเรียน หรือนำมาซึ่งเหตุที่น่าจะเป็นที่เสื่อมเสียหรือเป็นการไม่เหมาะสมใด ๆ แก่โรงเรียน
+      </label>
+    </div>
+  </div>
+
+  <div id="conflict-note" class="col-12" style="display: none;">
+    <span class="text-danger"><i class="fas fa-exclamation-triangle"></i> หมายเหตุ: วันและเวลาดังกล่าวห้องไม่ว่าง หรือระบบถูกปิดรับการจอง</span>
+  </div>
+
+  <div class="col-12 text-center mt-4">
+    <button type="submit" class="btn btn-primary btn-lg">
+      <i class="fas fa-save"></i> บันทึกการจอง
+    </button>
+  </div>
+</form>

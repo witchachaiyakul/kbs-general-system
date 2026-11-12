@@ -1,0 +1,910 @@
+// ==========================================
+// --- GLOBAL CONSTANTS ---
+// ==========================================
+const SPREADSHEET_ID = '1_VIyaN2qiMr0A4lQQ0c14emsWH77knp3INfzJgQgnww';
+const SHEET_NAME = 'data';
+const BLOCKED_SHEET_NAME = 'BlockedTimes';
+const FOLDER_ID = '1cLTq9PXgtpDkEmTkm4RoPXfswMPRC6-U';
+const CALENDAR_ID = 'ba4e0537a5cb180947a8a4f2edbafd26e4124e582bebc8f758bededfc71fbaf8@group.calendar.google.com';
+const ADMIN_ID = '1234';
+const ADMIN_PASS = '1234';
+const TIMEZONE = 'Asia/Bangkok';
+
+const THEMES = [
+  { name: 'น้ำเงินดั้งเดิม', base: '#0056b3', start: '#003a70', end: '#002147' },
+  { name: 'น้ำเงินกรมท่า', base: '#003366', start: '#002244', end: '#001122' },
+  { name: 'เขียวมรกต', base: '#198754', start: '#105937', end: '#082d1c' },
+  { name: 'ม่วงเข้ม', base: '#663399', start: '#442266', end: '#221133' },
+  { name: 'แดงเลือดนก', base: '#c90016', start: '#8b000f', end: '#4d0008' },
+  { name: 'ส้มอิฐ', base: '#d9534f', start: '#963835', end: '#541f1e' },
+  { name: 'เทาเข้ม', base: '#343a40', start: '#23272b', end: '#121416' },
+  { name: 'ฟ้าอมเขียว', base: '#20c997', start: '#158c69', end: '#0a4634' },
+  { name: 'น้ำตาลทอง', base: '#b8860b', start: '#7a5907', end: '#3d2c03' },
+  { name: 'ดำคลาสสิก', base: '#212529', start: '#16181b', end: '#0b0c0e' }
+];
+
+// ==========================================
+// --- WEB APP SETUP & TEMPLATE EVALUATION ---
+// ==========================================
+function doGet(e) {
+  const template = HtmlService.createTemplateFromFile('Index');
+  template.sysSettings = getSystemSettings();
+  template.sysRooms = getRoomsData();
+  template.sysThemes = THEMES;
+  template.sheetId = SPREADSHEET_ID;
+  const pageTitle = template.sysSettings.systemName.replace(/\n/g, ' ');
+  return template.evaluate().setTitle(pageTitle).addMetaTag('viewport', 'width=device-width, initial-scale=1.0').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function include(filename) { return HtmlService.createHtmlOutputFromFile(filename).getContent(); }
+function getScriptUrl() { return ScriptApp.getService().getUrl(); }
+
+// ==========================================
+// --- SYSTEM SETTINGS (RBAC, THEME, ROOMS) ---
+// ==========================================
+function getSystemSettings() {
+  const props = PropertiesService.getScriptProperties();
+  const rbacDef = { charts: true, backoffice: true, users: true, logs: true, settings: true, line: true };
+  let rbac = props.getProperty('sys_rbac');
+  if (rbac) { try { rbac = JSON.parse(rbac); } catch(e) { rbac = rbacDef; } } else { rbac = rbacDef; }
+  
+  let themeIndex = parseInt(props.getProperty('sys_theme_index')) || 0;
+  if(themeIndex < 0 || themeIndex >= THEMES.length) themeIndex = 0;
+  
+  return {
+    systemName: props.getProperty('sys_name') || 'ระบบจองห้องประชุม\nโรงเรียนกาญจนาภิเษกวิทยาลัย กระบี่',
+    logoUrl: props.getProperty('sys_logo') || 'https://img2.pic.in.th/pic/PNG-cc2fe0af0f6d0d30.png',
+    themeIndex: themeIndex,
+    theme: THEMES[themeIndex],
+    rbac: rbac
+  };
+}
+
+function saveSystemDisplay(name, logo, themeIdx, adminUser) {
+  let p = PropertiesService.getScriptProperties();
+  p.setProperty('sys_name', name); p.setProperty('sys_logo', logo); p.setProperty('sys_theme_index', themeIdx.toString());
+  logAction(adminUser || 'Admin', 'อัปเดตการแสดงผลของระบบ (ชื่อ, โลโก้, ธีม)');
+  return {success: true};
+}
+
+function saveSystemRbac(rbacObj, adminUser) {
+  PropertiesService.getScriptProperties().setProperty('sys_rbac', JSON.stringify(rbacObj));
+  logAction(adminUser || 'Admin', 'อัปเดตสิทธิ์การเข้าถึงเมนู (RBAC)');
+  return {success: true};
+}
+
+function getRoomsData() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet = ss.getSheetByName('Rooms');
+  if (!sheet) {
+    sheet = ss.insertSheet('Rooms');
+    sheet.appendRow(['RoomName', 'Capacity']);
+    const defaults = [['หอประชุม', '1500'], ['โดมราชพฤกษ์', '3000'], ['ห้องประชุม Auditorium', '100'], ['ห้องประชุมราชพฤกษ์', '30'], ['ห้องทูบี', '200'], ['ห้องสมาคมผู้ปกครองและครู', '30'], ['ห้องประชุมช่อราชพฤกษ์', '180']];
+    defaults.forEach(r => sheet.appendRow(r));
+  }
+  const data = sheet.getDataRange().getValues();
+  const rooms = [];
+  for (let i = 1; i < data.length; i++) {
+    if(data[i][0]) rooms.push({ rowNum: i+1, name: data[i][0].toString(), capacity: data[i][1].toString() });
+  }
+  return rooms;
+}
+
+function saveRoom(room, adminUser) {
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Rooms');
+    if (room.isNew) {
+      sheet.appendRow([room.name, room.capacity]);
+      logAction(adminUser || 'Admin', `เพิ่มห้องประชุมใหม่: ${room.name}`);
+    } else {
+      sheet.getRange(parseInt(room.rowNum), 1).setValue(room.name);
+      sheet.getRange(parseInt(room.rowNum), 2).setValue(room.capacity);
+      logAction(adminUser || 'Admin', `แก้ไขข้อมูลห้องประชุม: ${room.name}`);
+    }
+    return { success: true };
+  } catch(e) { return { success: false, message: e.message }; }
+}
+
+function deleteRoom(rowNum, roomName, adminUser) {
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Rooms');
+    sheet.deleteRow(parseInt(rowNum));
+    logAction(adminUser || 'Admin', `ลบห้องประชุม: ${roomName}`);
+    return { success: true };
+  } catch(e) { return { success: false, message: e.message }; }
+}
+
+// ==========================================
+// --- LINE SETTINGS & SMART TRIGGERS ---
+// ==========================================
+function getLineSettings() {
+  const p = PropertiesService.getScriptProperties();
+  const defaultBots = [
+    { id: 1, basicId: '@384yxnfq', token: 'IbE+qeWECIZAhuVotB32EpKzqOzLmYAHsDRgB80VTqWg2sTYTqyPWk7QERNDUww4SYw80HIUsGhsNk/tzKXZ7YyPVm9wKCZYXLx1v25OeoY6MT8v9d/i0tzs7CZTQNIQvE62kyJOs6x8WbKe1H6dswdB04t89/1O/w1cDnyilFU=' },
+    { id: 2, basicId: '@713zivlt', token: 'z8tFqsvI+WB3duKq5ffc+0x759YBREoanuDM35stW9ulpv3luNXh0Atq6JduCfLhxbrkY1WDZzv3C5c+2HdywFTf4WBBw3nXY52auVE7VZcGyEj56lUrhF3cMgSr+YvTaMpGUthjqYDv2OZQYh8igwdB04t89/1O/w1cDnyilFU=' },
+    { id: 3, basicId: '@521mdmwe', token: 'KXTf9ShvQsROJqP0o8H24RPnANj3k/nBm60awXitzhDKe3ZWD+b0opdsIY086kxGIALWwbfG3kHEUnRkF4JYySsJIm47P5cB9gNYrQNJ3h9Zk2qq5kpLSKTO+6nQrxjOBJUuJASNJX3MEkEatEHufAdB04t89/1O/w1cDnyilFU=' }
+  ];
+  let bots = p.getProperty('line_bots'); 
+  bots = bots ? JSON.parse(bots) : defaultBots;
+  let triggers = p.getProperty('line_triggers'); 
+  triggers = triggers ? JSON.parse(triggers) : [];
+
+  return {
+    groupId: p.getProperty('line_group_id') || 'Ca7ef92d19387fd9d7502b4c9470f44ed',
+    activeBotId: parseInt(p.getProperty('line_active_bot_id')) || 1,
+    bots: bots,
+    quotaMax: parseInt(p.getProperty('line_quota_max')) || 300,
+    members: parseInt(p.getProperty('line_members')) || 10,
+    sendsCount: parseInt(p.getProperty('line_sends_count')) || 0,
+    triggers: triggers
+  };
+}
+
+function saveLineSettingsData(data, adminUser) {
+  const p = PropertiesService.getScriptProperties();
+  if(data.type === 'quota') {
+    p.setProperty('line_quota_max', data.quotaMax); p.setProperty('line_members', data.members);
+    logAction(adminUser || 'Admin', 'อัปเดตตั้งค่าโควตาLINE');
+  } else if(data.type === 'resetQuota') {
+    p.setProperty('line_sends_count', '0');
+    logAction(adminUser || 'Admin', 'รีเซ็ตจำนวนการส่งLINE กลับเป็น 0');
+  } else if(data.type === 'bots') {
+    p.setProperty('line_bots', JSON.stringify(data.bots)); p.setProperty('line_active_bot_id', data.activeBotId); p.setProperty('line_group_id', data.groupId);
+    logAction(adminUser || 'Admin', `อัปเดตและสลับใช้งานLINE Bot (Bot ${data.activeBotId})`);
+  } else if(data.type === 'triggers') {
+    p.setProperty('line_triggers', JSON.stringify(data.triggers));
+    
+    // 🟢 เรียกใช้เครื่องยนต์หลักทุกครั้งที่มีการบันทึกทริกเกอร์ใหม่
+    setupMasterTrigger(); 
+    
+    logAction(adminUser || 'Admin', 'จัดการระบบทริกเกอร์แจ้งเตือน LINE');
+  }
+  return { success: true, settings: getLineSettings() };
+}
+
+function testLineMessage(groupId, token) {
+  try {
+    const url = 'https://api.line.me/v2/bot/message/push';
+    const payload = { to: groupId, messages: [{ type: 'text', text: '✅ ทดสอบระบบ: การเชื่อมต่อ LINE API สำเร็จ!' }] };
+    const options = { method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + token }, payload: JSON.stringify(payload), muteHttpExceptions: true };
+    const res = UrlFetchApp.fetch(url, options);
+    
+    if(res.getResponseCode() === 200) {
+      const p = PropertiesService.getScriptProperties();
+      let currentSends = parseInt(p.getProperty('line_sends_count')) || 0;
+      p.setProperty('line_sends_count', (currentSends + 1).toString());
+      return { success: true };
+    }
+    return { success: false, message: JSON.parse(res.getContentText()).message };
+  } catch(e) { return { success: false, message: e.message }; }
+}
+
+function processLineMessage(messageText) {
+  const settings = getLineSettings();
+  const activeBot = settings.bots.find(b => b.id === settings.activeBotId) || settings.bots[0];
+  const totalAllowedSends = Math.floor(settings.quotaMax / (settings.members || 1));
+  let remainingSends = totalAllowedSends - settings.sendsCount;
+  
+  if (remainingSends <= 5 && remainingSends > 0) {
+    messageText += `\n\n⚠️ คำเตือน: โควตา LINE ของเดือนนี้ใกล้หมดแล้ว (เหลือส่งได้อีก ${remainingSends-1} ครั้ง)\nกรุณาเตรียมสลับ Bot`;
+  } else if (remainingSends <= 0) {
+    messageText += `\n\n❌ คำเตือน: โควตา LINE หมดแล้ว ข้อความอาจไม่ถึงผู้รับ กรุณาสลับ Botทันที`;
+  }
+  
+  const url = 'https://api.line.me/v2/bot/message/push';
+  const payload = { to: settings.groupId, messages: [{ type: 'text', text: messageText }] };
+  const options = { method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + activeBot.token }, payload: JSON.stringify(payload), muteHttpExceptions: true };
+  UrlFetchApp.fetch(url, options);
+  
+  PropertiesService.getScriptProperties().setProperty('line_sends_count', (settings.sendsCount + 1).toString());
+}
+
+function sendLineNotification(data, layoutUrl, attachmentUrl) {
+    const startDate = new Date(data.StartTime).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short', timeZone: TIMEZONE });
+    const endDate = new Date(data.EndTime).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short', timeZone: TIMEZONE });
+    const room = data.Location === 'อื่นๆ' ? data.LocationOther : data.Location;
+    let layoutLinkText = (layoutUrl && layoutUrl.startsWith('http')) ? layoutUrl : 'ไม่มี';
+    let attachmentLinkText = (attachmentUrl && attachmentUrl.startsWith('http')) ? attachmentUrl : 'ไม่มี';
+
+    let messageText = `มีการจองห้องประชุมใหม่\n📌ห้อง: ${room}\n👤ผู้จอง: ${data.FullName}\n📝ตำแหน่ง: ${data.Position === 'อื่นๆ' ? data.PositionOther : data.Position}\n📞โทรศัพท์: ${data.Phone}\n🎯ขอใช้อาคารสถานที่เพื่อ: ${data.Purpose}\n⏰วันที่เริ่ม: ${startDate}\n⏳วันที่สิ้นสุด: ${endDate}\n🛠️อุปกรณ์: ${data.Equipment.join(', ')}\n🪑โต๊ะ: ${data.Tables || '0'} ตัว\n🪑เก้าอี้: ${data.Chairs || '0'} ตัว\n📐ผังการจัดวาง: ${layoutLinkText}\n📋เอกสารแนบ: ${attachmentLinkText}\n📅ดูในปฏิทิน: https://calendar.google.com/calendar/embed?src=${CALENDAR_ID}&ctz=Asia%2FBangkok`;
+    processLineMessage(messageText);
+}
+
+function processSmartLineTriggers() {
+  var config = getLineSettings();
+  if (!config || !config.triggers || config.triggers.length === 0) return;
+  
+  var now = new Date();
+  var currentHourMin = Utilities.formatDate(now, "Asia/Bangkok", "HH:mm");
+  var currentDayOfWeek = now.getDay().toString();
+  var currentDate = Utilities.formatDate(now, "Asia/Bangkok", "yyyy-MM-dd");
+
+  config.triggers.forEach(function(t) {
+    if (t.time === currentHourMin) {
+      var shouldRun = false;
+      if (t.freqType === 'daily') shouldRun = true;
+      else if (t.freqType === 'weekly' && t.freqValue === currentDayOfWeek) shouldRun = true;
+      else if (t.freqType === 'specific_date' && t.freqValue === currentDate) shouldRun = true;
+
+      if (shouldRun) executeLineSummary(t, config);
+    }
+  });
+}
+
+function testTriggerNow(triggerId) {
+  var config = getLineSettings();
+  if (!config || !config.triggers) return { success: false, message: "ไม่พบการตั้งค่าแจ้งเตือน" };
+  var triggerConfig = config.triggers.find(function(x) { return x.id == triggerId; });
+  if (!triggerConfig) return { success: false, message: "ไม่พบข้อมูลทริกเกอร์นี้" };
+  
+  try {
+    executeLineSummary(triggerConfig, config);
+    return { success: true };
+  } catch (e) { return { success: false, message: e.message }; }
+}
+
+function executeLineSummary(t, config) {
+  var today = new Date();
+  var targetMonday, targetSunday;
+
+  // 🟢 ลอกโครงสร้างคำนวณช่วงสัปดาห์แบบดั้งเดิมของคุณมาใช้แบบ 100%
+  if (t.rangeType === '7days') {
+    var dayOfWeek = today.getDay(); 
+    var offsetToMonday = (dayOfWeek === 0) ? -6 : 1 - dayOfWeek;
+    if (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) { offsetToMonday += 7; }
+    
+    targetMonday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offsetToMonday);
+    targetMonday.setHours(0, 0, 0, 0);
+    
+    targetSunday = new Date(targetMonday.getTime());
+    targetSunday.setDate(targetMonday.getDate() + 6);
+    targetSunday.setHours(23, 59, 59, 999);
+  } else if (t.rangeType === 'tomorrow') {
+    targetMonday = new Date();
+    targetMonday.setDate(targetMonday.getDate() + 1);
+    targetMonday.setHours(0, 0, 0, 0);
+    targetSunday = new Date(targetMonday);
+    targetSunday.setHours(23, 59, 59, 999);
+  } else if (t.rangeType === 'custom' && t.rangeStart && t.rangeEnd) {
+    targetMonday = new Date(t.rangeStart);
+    targetMonday.setHours(0, 0, 0, 0);
+    targetSunday = new Date(t.rangeEnd);
+    targetSunday.setHours(23, 59, 59, 999);
+  } else {
+    targetMonday = new Date();
+    targetMonday.setHours(0, 0, 0, 0);
+    targetSunday = new Date(targetMonday);
+    targetSunday.setHours(23, 59, 59, 999);
+  }
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("data");
+  var sheetData = sheet.getDataRange().getValues();
+
+  function formatDateLocal(date) { return Utilities.formatDate(date, 'Asia/Bangkok', 'dd/MM/yyyy'); }
+  function formatTimeLocal(date) { return Utilities.formatDate(date, 'Asia/Bangkok', 'HH:mm'); }
+  var thaiDays = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+
+  var messageHeader = '🗓️ สรุปตารางใช้ห้องประชุม\n(' + formatDateLocal(targetMonday) + ' - ' + formatDateLocal(targetSunday) + '):\n';
+  var messageBody = '';
+  var upcomingUsage = [];
+
+  // 🟢 วนลูปและตรวจจับวันที่ด้วยคำสั่งดั้งเดิมของคุณที่ระบบอ่านค่าได้เสถียรที่สุด
+  for (var i = 1; i < sheetData.length; i++) {
+    var row = sheetData[i];
+    if (!row[6]) continue;
+    
+    var startTime = new Date(row[6]);
+    if (startTime.toString() === "Invalid Date") continue;
+
+    // 🟢 เปรียบเทียบช่วงเวลาตรงๆ แบบโค้ดเดิม และไม่สนใจตัวกรองสถานะใดๆ ตามคำสั่ง
+    if (startTime >= targetMonday && startTime <= targetSunday) {
+      upcomingUsage.push({ startTime: startTime, endTime: new Date(row[7]), location: row[4], fullName: row[1] });
+    }
+  }
+
+  upcomingUsage.sort(function(a, b) { return a.startTime - b.startTime; });
+
+  if (upcomingUsage.length === 0) { 
+    messageBody = '\nไม่มีการใช้ห้องในช่วงเวลาดังกล่าว'; 
+  } else {
+    upcomingUsage.forEach(function(usage, index) {
+      messageBody += '\n' + (index > 0 ? '----------\n' : '');
+      messageBody += 'ห้อง: ' + usage.location + '\nวัน: ' + formatDateLocal(usage.startTime) + ' (' + thaiDays[usage.startTime.getDay()] + ')\nเวลา: ' + formatTimeLocal(usage.startTime) + ' - ' + formatTimeLocal(usage.endTime) + '\nผู้ใช้: ' + usage.fullName;
+    });
+  }
+
+  var finalMessage = messageHeader + messageBody;
+  if (t.msg && t.msg.trim() !== '') finalMessage += '\n\n' + t.msg;
+
+  // ส่งข้อความเข้า LINE กลุ่มตาม Bot ที่เลือกใช้งานปัจจุบัน
+  var bot = config.bots.find(function(b) { return b.id == config.activeBotId; }) || config.bots[0];
+  if (bot && config.groupId) {
+    var payload = { "to": config.groupId.trim(), "messages": [{ "type": "text", "text": finalMessage }] };
+    var options = {
+      "method": "post",
+      "headers": { "Authorization": "Bearer " + bot.token.trim(), "Content-Type": "application/json" },
+      "payload": JSON.stringify(payload),
+      "muteHttpExceptions": true
+    };
+    UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", options);
+  }
+}
+
+// ==========================================
+// --- BOOKING LOGIC ---
+// ==========================================
+function submitBooking(formData) {
+  try {
+    if (formData.Location !== 'อื่นๆ' && formData.Location.includes(' รองรับ')) { formData.Location = formData.Location.split(' รองรับ')[0].trim(); }
+    const startTime = new Date(formData.StartTime);
+    const endTime = new Date(formData.EndTime);
+    const room = formData.Location === 'อื่นๆ' ? formData.LocationOther : formData.Location;
+    
+    if (isTimeBlocked(startTime, endTime, room)) { throw new Error('ระบบปิดรับการจองในช่วงเวลาหรือห้องที่ท่านเลือก กรุณาติดต่อผู้ดูแลระบบ'); }
+    
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+    const calendar = CalendarApp.getCalendarById(CALENDAR_ID);
+    
+    const exceptBookingId = formData.BookingId || null;
+    if (checkForConflictsStrict(sheet, room, startTime, endTime, exceptBookingId)) { throw new Error('วันและเวลาดังกล่าวมีการจองแล้ว กรุณาเลือกช่วงเวลาอื่นหรือติดต่อฝ่ายบริหารทั่วไป'); }
+    
+    const uniqueId = Utilities.getUuid();
+    let layoutUrl = ''; let attachmentUrl = '';
+    if (formData.LayoutFile && formData.LayoutFile.bytes) { layoutUrl = uploadFileToDrive(formData.LayoutFile, `Layout_${formData.FullName}_${uniqueId}`); }
+    if (formData.AttachmentFile && formData.AttachmentFile.bytes) { attachmentUrl = uploadFileToDrive(formData.AttachmentFile, `Attachment_${formData.FullName}_${uniqueId}`); }
+    
+    const eventTitle = `${room} - ${formData.FullName}`;
+    const eventDescription = `วัตถุประสงค์: ${formData.Purpose}\nตำแหน่ง: ${formData.Position === 'อื่นๆ' ? formData.PositionOther : formData.Position}\nโทรศัพท์: ${formData.Phone}\nอุปกรณ์ที่ขอใช้: ${Array.isArray(formData.Equipment) ? formData.Equipment.join(', ') : (formData.Equipment || '')}\nโต๊ะ: ${formData.Tables} ตัว\nเก้าอี้: ${formData.Chairs} ตัว`.trim();
+    const event = calendar.createEvent(eventTitle, startTime, endTime, { description: eventDescription });
+    
+    const newRow = [new Date(), formData.FullName, formData.Position === 'อื่นๆ' ? formData.PositionOther : formData.Position, formData.Phone, room, formData.Purpose, startTime, endTime, Array.isArray(formData.Equipment) ? formData.Equipment.join(', ') : (formData.Equipment || ''), formData.Tables, formData.Chairs, layoutUrl, attachmentUrl, 'รออนุมัติ', uniqueId, event.getId()];
+    sheet.appendRow(newRow);
+    sendLineNotification(formData, layoutUrl, attachmentUrl);
+    return { success: true, message: 'บันทึกข้อมูลการจองเรียบร้อยแล้ว' };
+  } catch (error) { Logger.log(error.toString()); return { success: false, message: error.message }; }
+}
+
+function checkForConflictsStrict(sheet, room, startTime, endTime, exceptBookingId) {
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return false;
+  const COL_ROOM = 5, COL_START = 7, COL_END = 8, COL_STATUS = 14, COL_BOOKING_ID = 15;
+  const A1 = normalizeToDate(startTime), A2 = normalizeToDate(endTime);
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const rRoom = (row[COL_ROOM - 1] || '').toString().trim();
+    if (rRoom !== room) continue;
+    const status = (row[COL_STATUS - 1] || '').toString().trim();
+    if (status === 'ยกเลิก' || status === 'ไม่อนุมัติ') continue;
+    const rBookingId = (row[COL_BOOKING_ID - 1] || '').toString().trim();
+    if (exceptBookingId && rBookingId && rBookingId === String(exceptBookingId)) continue;
+    const B1 = normalizeToDate(row[COL_START - 1]), B2 = normalizeToDate(row[COL_END - 1]);
+    if (isOverlap(A1, A2, B1, B2)) return true;
+  }
+  return false;
+}
+
+function isOverlap(aStart, aEnd, bStart, bEnd) {
+  const A1 = normalizeToDate(aStart).getTime(), A2 = normalizeToDate(aEnd).getTime();
+  const B1 = normalizeToDate(bStart).getTime(), B2 = normalizeToDate(bEnd).getTime();
+  if (!(A1 < A2 && B1 < B2)) return false;
+  return A1 < B2 && B1 < A2;
+}
+
+function normalizeToDate(v) {
+  if (v instanceof Date) return v;
+  if (typeof v === 'number') return new Date(Math.round((v - 25569) * 86400 * 1000));
+  return new Date(v);
+}
+
+function checkForConflicts(location, startTime, endTime, excludeUniqueId) {
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  if (sheet.getLastRow() < 2) return false;
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  const locationCol = 4, startCol = 6, endCol = 7, statusCol = 13, uniqueIdCol = 14;
+  if (location.startsWith('อื่นๆ')) return false;
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    if (row[statusCol] === 'ไม่อนุมัติ' || row[statusCol] === 'ยกเลิก' || (excludeUniqueId && row[uniqueIdCol] === excludeUniqueId)) continue;
+    if (row[locationCol] === location && startTime < new Date(row[endCol]) && endTime > new Date(row[startCol])) return true;
+  }
+  return false;
+}
+
+// ==========================================
+// --- BOOKING MANAGEMENT ---
+// ==========================================
+function updateBookingStatus(uniqueId, newStatus, adminUser) {
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+    if (sheet.getLastRow() < 2) return { success: false, message: 'ไม่พบข้อมูลการจอง' };
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][14] === uniqueId) {
+        sheet.getRange(i + 2, 14).setValue(newStatus);
+        logAction(adminUser || 'Admin', `เปลี่ยนสถานะการจองของ คุณ ${data[i][1]} เป็น "${newStatus}"`);
+        const calendarEventId = data[i][15];
+        if (calendarEventId) {
+          try {
+            const event = CalendarApp.getCalendarById(CALENDAR_ID).getEventById(calendarEventId);
+            if (event) {
+              if (newStatus === 'อนุมัติ') event.setColor(CalendarApp.EventColor.GREEN);
+              else if (newStatus === 'ไม่อนุมัติ') event.setColor(CalendarApp.EventColor.RED);
+              else if (newStatus === 'จัดสถานที่แล้ว') event.setColor(CalendarApp.EventColor.BLUE);
+              else event.setColor(CalendarApp.EventColor.YELLOW);
+            }
+          } catch (calErr) {}
+        }
+        if (newStatus === 'จัดสถานที่แล้ว') {
+          const bData = { Location: data[i][4], FullName: data[i][1], StartTime: new Date(data[i][6]).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short', timeZone: TIMEZONE }) };
+          processLineMessage(`✅ **จัดสถานที่เรียบร้อยแล้ว**\n----------------------------------\n**ห้อง:** ${bData.Location}\n**ผู้จอง:** ${bData.FullName}\n**วันที่เริ่มใช้:** ${bData.StartTime}`);
+        }
+        return { success: true };
+      }
+    }
+    return { success: false, message: 'ไม่พบข้อมูลการจอง' };
+  } catch(e) { return { success: false, message: e.message }; }
+}
+
+function updateBooking(formData, adminUser) {
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+    const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+    const newStart = new Date(formData.StartTime), newEnd = new Date(formData.EndTime);
+    if (checkForConflicts(formData.Location, newStart, newEnd, formData.uniqueId)) throw new Error('วันและเวลาดังกล่าวของห้องที่เลือกมีการจองซ้อนทับกัน');
+    for (let i = 0; i < values.length; i++) {
+      if (values[i][14] === formData.uniqueId) {
+        let successMsg = "อัปเดตข้อมูลเรียบร้อย"; const rowToUp = i + 2;
+        sheet.getRange(rowToUp, 2).setValue(formData.FullName); sheet.getRange(rowToUp, 4).setValue(formData.Phone); sheet.getRange(rowToUp, 5).setValue(formData.Location); sheet.getRange(rowToUp, 6).setValue(formData.Purpose); sheet.getRange(rowToUp, 7).setValue(newStart); sheet.getRange(rowToUp, 8).setValue(newEnd);
+        logAction(adminUser || 'Admin', `แก้ไขข้อมูลการจองของคุณ ${formData.FullName}`);
+        const calId = values[i][15];
+        if (calId) {
+          try {
+            const event = CalendarApp.getCalendarById(CALENDAR_ID).getEventById(calId);
+            if (event) { event.setTitle(`${formData.Location} - ${formData.FullName}`); event.setTime(newStart, newEnd); event.setDescription(`วัตถุประสงค์: ${formData.Purpose}\nโทรศัพท์: ${formData.Phone}`); }
+          } catch(calErr) {}
+        }
+        return { success: true, message: successMsg };
+      }
+    }
+    throw new Error('ไม่พบข้อมูลที่ต้องการอัปเดต');
+  } catch (e) { return { success: false, message: e.message }; }
+}
+
+function deleteBooking(uniqueId, adminUser) {
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+    if (sheet.getLastRow() < 2) return { success: false, message: 'ไม่พบข้อมูล' };
+    const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][14] === uniqueId) {
+        logAction(adminUser || 'Admin', `ลบข้อมูลการจองของคุณ ${data[i][1]}`);
+        if (data[i][15]) { try { CalendarApp.getCalendarById(CALENDAR_ID).getEventById(data[i][15]).deleteEvent(); } catch (e) {} }
+        sheet.deleteRow(i + 2); return { success: true };
+      }
+    }
+    return { success: false };
+  } catch(e) { return { success: false, message: e.message }; }
+}
+
+// ==========================================
+// --- DATA RETRIEVAL (DASHBOARD & CHARTS) ---
+// ==========================================
+function getBookings(month, year) {
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  if (sheet.getLastRow() < 2) return [];
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  const filtered = values.filter(row => {
+    if (!row[6]) return false;
+    const bDate = new Date(row[6]);
+    const mMonth = (!month || month === "") ? true : (bDate.getMonth() + 1) == month;
+    const mYear = (!year || year === "") ? true : bDate.getFullYear() == year;
+    return mMonth && mYear;
+  });
+  const bookings = filtered.map(row => {
+    const exUrl = (cv) => { if (typeof cv === 'string' && cv.startsWith('=HYPERLINK')) { const match = cv.match(/=HYPERLINK\("([^"]+)"/); return match ? match[1] : cv; } return cv; };
+    return { timestamp: row[0] ? new Date(row[0]).toISOString() : '', fullName: row[1], position: row[2], phone: row[3], location: row[4], purpose: row[5], startTime: row[6] ? new Date(row[6]).toISOString() : '', endTime: row[7] ? new Date(row[7]).toISOString() : '', equipment: row[8], tables: row[9], chairs: row[10], layoutUrl: exUrl(row[11]), attachmentUrl: exUrl(row[12]), status: row[13], uniqueId: row[14], calendarEventId: row[15] };
+  });
+  return bookings.reverse();
+}
+
+function getAdminData(month, year) { return { news: getNewsMessage(), bookings: getBookings(month, year), blockedPeriods: getBlockoutPeriods() }; }
+
+function getBookingById(uniqueId) {
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  if (sheet.getLastRow() < 2) return null;
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  for (const row of values) { if (row[14] === uniqueId) return { fullName: row[1], phone: row[3], location: row[4], purpose: row[5], startTime: row[6].toISOString(), endTime: row[7].toISOString(), uniqueId: row[14] }; }
+  return null;
+}
+
+function getChartData(startStr, endStr) {
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+    if (sheet.getLastRow() < 2) return { rooms: {}, statuses: {}, recent: [] };
+    const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+    let filterStart = startStr ? new Date(startStr).getTime() : 0;
+    let filterEnd = endStr ? new Date(endStr).setHours(23,59,59,999) : Infinity;
+    let roomCounts = {}; let statusCounts = { 'อนุมัติ': 0, 'รออนุมัติ': 0, 'ไม่อนุมัติ': 0, 'จัดสถานที่แล้ว': 0 }; let recentBookings = [];
+    for (let i = values.length - 1; i >= 0; i--) {
+      const row = values[i];
+      if (!row[6]) continue;
+      let bTime = new Date(row[6]).getTime();
+      if (bTime >= filterStart && bTime <= filterEnd) {
+        let room = row[4] || 'ไม่ระบุ'; let status = row[13] || 'รออนุมัติ';
+        roomCounts[room] = (roomCounts[room] || 0) + 1;
+        if (statusCounts[status] !== undefined) statusCounts[status]++;
+        if (recentBookings.length < 10) recentBookings.push({ fullName: row[1], location: room, startTime: new Date(row[6]).toISOString(), status: status });
+      }
+    }
+    return { rooms: roomCounts, statuses: statusCounts, recent: recentBookings };
+  } catch(e) { return { rooms: {}, statuses: {}, recent: [] }; }
+}
+
+// ==========================================
+// --- BLOCKOUT PERIODS ---
+// ==========================================
+function isTimeBlocked(startTime, endTime, roomName) {
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(BLOCKED_SHEET_NAME);
+  if (sheet.getLastRow() < 2) return false;
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  const checkStart = new Date(startTime).getTime(), checkEnd = new Date(endTime).getTime();
+  let cleanRoom = roomName;
+  if (typeof cleanRoom === 'string' && cleanRoom.includes(' รองรับ')) cleanRoom = cleanRoom.split(' รองรับ')[0].trim();
+  else if (typeof cleanRoom === 'string') cleanRoom = cleanRoom.trim();
+  
+  for (let i = 0; i < data.length; i++) {
+    const bStart = new Date(data[i][1]).getTime(), bEnd = new Date(data[i][2]).getTime();
+    let bRoom = data[i][3];
+    if (typeof bRoom === 'string' && bRoom.includes(' รองรับ')) bRoom = bRoom.split(' รองรับ')[0].trim();
+    else if (typeof bRoom === 'string') bRoom = bRoom.trim();
+    if (checkStart < bEnd && checkEnd > bStart) {
+      if (bRoom === 'ALL_ROOMS' || bRoom === 'ทุกห้อง' || bRoom === cleanRoom) return true;
+    }
+  }
+  return false;
+}
+
+function getBlockoutPeriods() {
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(BLOCKED_SHEET_NAME);
+  if (sheet.getLastRow() < 2) return [];
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues().map(row => ({ id: row[0], start: row[1] ? new Date(row[1]).toISOString() : '', end: row[2] ? new Date(row[2]).toISOString() : '', room: row[3] }));
+}
+
+function addBlockoutPeriod(period, adminUser) {
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(BLOCKED_SHEET_NAME);
+    sheet.appendRow([Utilities.getUuid(), new Date(period.start), new Date(period.end), period.room]);
+    logAction(adminUser || 'Admin', `ปิดระบบการจองห้อง "${period.room}"ชั่วคราว`);
+    return { success: true };
+  } catch(e) { return { success: false, message: e.message }; }
+}
+
+function deleteBlockoutPeriod(id, adminUser) {
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(BLOCKED_SHEET_NAME);
+    if (sheet.getLastRow() < 2) return { success: false, message: "ไม่มีข้อมูล" };
+    const ids = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (let i = 0; i < ids.length; i++) {
+      if (ids[i][0] == id) { logAction(adminUser || 'Admin', `ยกเลิกการปิดระบบจองชั่วคราวID: ${id}`); sheet.deleteRow(i + 2); return { success: true }; }
+    }
+    return { success: false, message: "ไม่พบข้อมูล" };
+  } catch(e) { return { success: false, message: e.message }; }
+}
+
+// ==========================================
+// --- USERS & ADMIN LOGIC ---
+// ==========================================
+function adminLogin(credentials) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    let userSheet = ss.getSheetByName('Users');
+    if (!userSheet) {
+      userSheet = ss.insertSheet('Users');
+      userSheet.appendRow(['Username', 'Password', 'FullName', 'Status']);
+      userSheet.appendRow([ADMIN_ID, ADMIN_PASS, 'ผู้ดูแลระบบหลัก', 'Admin']);
+    }
+    const data = userSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0].toString().trim() === credentials.id.toString().trim() && data[i][1].toString().trim() === credentials.pass.toString().trim()) {
+        logAction(data[i][2], 'เข้าสู่ระบบหลังบ้าน');
+        return { success: true, name: data[i][2], status: data[i][3], rbac: getSystemSettings().rbac };
+      }
+    }
+  } catch(err) {
+    if (credentials.id === ADMIN_ID && credentials.pass === ADMIN_PASS) return { success: true, name: 'ผู้ดูแลระบบหลัก (Fallback)', status: 'Admin', rbac: getSystemSettings().rbac };
+  }
+  return { success: false, message: 'ID หรือรหัสผ่านไม่ถูกต้อง' };
+}
+
+function getUsers() {
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Users');
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    return sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues().map((r, i) => ({ rowNum: i + 2, username: r[0], password: r[1], fullname: r[2], status: r[3] }));
+  } catch(e) { return []; }
+}
+
+function saveUser(userData, adminUser) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    let sheet = ss.getSheetByName('Users');
+    if (!sheet) { sheet = ss.insertSheet('Users'); sheet.appendRow(['Username', 'Password', 'FullName', 'Status']); }
+    const data = sheet.getDataRange().getValues();
+    if (userData.isNew) {
+      for (let i = 1; i < data.length; i++) { if (data[i][0].toString() === userData.username) throw new Error('มี Username นี้แล้ว'); }
+      sheet.appendRow([userData.username, userData.password, userData.fullname, userData.status]);
+      logAction(adminUser || 'Admin', `เพิ่มผู้ใช้ใหม่: ${userData.fullname}`);
+    } else {
+      const row = parseInt(userData.rowNum);
+      sheet.getRange(row, 1).setValue(userData.username); sheet.getRange(row, 2).setValue(userData.password); sheet.getRange(row, 3).setValue(userData.fullname); sheet.getRange(row, 4).setValue(userData.status);
+      logAction(adminUser || 'Admin', `แก้ไขผู้ใช้: ${userData.fullname}`);
+    }
+    return { success: true };
+  } catch(e) { return { success: false, message: e.message }; }
+}
+
+function deleteUser(rowNum, fullname, adminUser) {
+  try {
+    SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Users').deleteRow(parseInt(rowNum));
+    logAction(adminUser || 'Admin', `ลบผู้ใช้: ${fullname}`);
+    return { success: true };
+  } catch(e) { return { success: false, message: e.message }; }
+}
+
+function updateAdminNews(newsText, adminUser) {
+  try { PropertiesService.getScriptProperties().setProperty('adminNews', newsText); logAction(adminUser || 'Admin', `อัปเดตประกาศข่าวสาร`); return { success: true, message: 'บันทึกแล้ว' }; } 
+  catch (e) { return { success: false, message: 'เกิดข้อผิดพลาด: ' + e.message }; }
+}
+function getNewsMessage() { return PropertiesService.getScriptProperties().getProperty('adminNews') || ''; }
+
+// ==========================================
+// --- UTILITIES ---
+// ==========================================
+function uploadFileToDrive(fileData, fileName) {
+  try {
+    const folder = DriveApp.getFolderById(FOLDER_ID);
+    const fileBlob = Utilities.newBlob(Utilities.base64Decode(fileData.bytes), fileData.type, fileName);
+    const file = folder.createFile(fileBlob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return file.getUrl();
+  } catch (e) { return 'Upload Failed'; }
+}
+
+function logAction(user, action) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    let logSheet = ss.getSheetByName('Logs');
+    if (!logSheet) { logSheet = ss.insertSheet('Logs'); logSheet.appendRow(['เวลา', 'ผู้ใช้', 'รายการที่ดำเนินการ']); }
+    logSheet.appendRow([new Date(), user, action]);
+  } catch(e) {}
+}
+
+function getLogs() {
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName('Logs');
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    return sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues().map(r => ({ time: r[0] ? new Date(r[0]).toLocaleString('th-TH', { timeZone: TIMEZONE }) : '', user: r[1], action: r[2] })).reverse();
+  } catch(e) { return []; }
+}
+
+function fixMissingData() {
+  const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  if (sheet.getLastRow() < 2) return;
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (!values[i][14] || values[i][14] === "") {
+      sheet.getRange(i + 2, 15).setValue(Utilities.getUuid());
+    }
+  }
+}
+
+function formatDate(date) { return date.getDate().toString().padStart(2, '0') + '/' + (date.getMonth() + 1).toString().padStart(2, '0') + '/' + date.getFullYear(); }
+function formatTime(date) { return date.getHours().toString().padStart(2, '0') + ':' + date.getMinutes().toString().padStart(2, '0'); }
+
+// ==========================================
+// 📌 ระบบติดตามสถานะการพิมพ์รายงาน (Report Status)
+// ==========================================
+function ensureReportStatusSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("ReportStatus");
+  if (!sheet) {
+    sheet = ss.insertSheet("ReportStatus");
+    sheet.appendRow(["Year", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]);
+    sheet.getRange("A1:M1").setFontWeight("bold").setBackground("#d9edf7").setHorizontalAlignment("center");
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function getReportStatus(year) {
+  var sheet = ensureReportStatusSheet();
+  var data = sheet.getDataRange().getValues();
+  var status = Array(12).fill(false); 
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0].toString() === year.toString()) {
+      for (var m = 0; m < 12; m++) {
+        var val = data[i][m+1];
+        status[m] = (val === true || val === "TRUE" || val === "true");
+      }
+      return status;
+    }
+  }
+  return status;
+}
+
+function toggleReportStatus(year, monthNum, isPrinted) {
+  var sheet = ensureReportStatusSheet();
+  var data = sheet.getDataRange().getValues();
+  var rowIndex = -1;
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0].toString() === year.toString()) { rowIndex = i + 1; break; }
+  }
+  if (rowIndex === -1) {
+    var newRow = [year, false, false, false, false, false, false, false, false, false, false, false, false];
+    newRow[monthNum] = isPrinted; 
+    sheet.appendRow(newRow);
+  } else {
+    sheet.getRange(rowIndex, monthNum + 1).setValue(isPrinted);
+  }
+  return { success: true };
+}
+
+// ==========================================
+// --- BULK APPROVE (อนุมัติทั้งหมดตามเดือน) ---
+// ==========================================
+function bulkApproveBookings(month, year, adminUser) {
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+    if (sheet.getLastRow() < 2) return { success: false, message: 'ไม่พบข้อมูลการจอง' };
+    
+    const data = sheet.getDataRange().getValues();
+    let count = 0;
+
+    for (let i = 1; i < data.length; i++) {
+      if (!data[i][6]) continue; // ข้ามถ้าไม่มีวันที่เริ่ม
+      
+      const bDate = new Date(data[i][6]);
+      const mMonth = (!month || month === "") ? true : (bDate.getMonth() + 1) == month;
+      const mYear = (!year || year === "") ? true : bDate.getFullYear() == year;
+
+      // ถ้าเดือน/ปี ตรงกับที่เลือก และสถานะปัจจุบันคือ "รออนุมัติ"
+      if (mMonth && mYear && data[i][13] === 'รออนุมัติ') {
+        sheet.getRange(i + 1, 14).setValue('อนุมัติ'); // อัปเดตชีต
+        count++;
+        
+        // อัปเดตสีใน Google Calendar
+        const calendarEventId = data[i][15];
+        if (calendarEventId) {
+          try {
+            const event = CalendarApp.getCalendarById(CALENDAR_ID).getEventById(calendarEventId);
+            if (event) event.setColor(CalendarApp.EventColor.GREEN);
+          } catch (calErr) {}
+        }
+      }
+    }
+
+    if (count > 0) {
+      logAction(adminUser || 'Admin', `อนุมัติทั้งหมดรวดเดียวจำนวน ${count} รายการ (เดือน: ${month||'ทุกเดือน'}/${year||'ทุกปี'})`);
+    }
+
+    return { success: true, count: count };
+  } catch (e) { 
+    return { success: false, message: e.message }; 
+  }
+}
+
+// ==========================================
+// --- ทริกเกอร์แจ้งเตือนรายสัปดาห์ (เพิ่มใหม่สำหรับตั้ง Trigger) ---
+// ==========================================
+function sendUpcomingRoomUsageFromSheet() {
+  // 1. ดึงการตั้งค่า LINE จากระบบปัจจุบัน (เพื่อให้รองรับการสลับ Bot อัตโนมัติ)
+  var config = getLineSettings();
+  var bot = config.bots.find(function(b) { return b.id == config.activeBotId; }) || config.bots[0];
+  var token = bot.token;
+  var groupId = config.groupId;
+
+  if (!token || !groupId) {
+    Logger.log("ระบบทริกเกอร์: ไม่พบ Token หรือ Group ID ของ LINE");
+    return;
+  }
+
+  // 2. ดึงข้อมูลจากชีต
+  var sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME); 
+  var dataRange = sheet.getDataRange();
+  var values = dataRange.getValues();
+
+  // 3. คำนวณหาวันจันทร์ - อาทิตย์ ของสัปดาห์นี้
+  var today = new Date();
+  var upcomingMonday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay() + 1);
+  upcomingMonday.setHours(0, 0, 0, 0);
+
+  var upcomingSunday = new Date(upcomingMonday.getTime());
+  upcomingSunday.setDate(upcomingMonday.getDate() + 6);
+  upcomingSunday.setHours(23, 59, 59, 999);
+
+  var upcomingUsage = [];
+
+  // 4. วนลูปหาคิวจองที่อยู่ในช่วงสัปดาห์นี้
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i];
+    if (!row[6]) continue; // ถ้าไม่มีข้อมูลเวลาเริ่ม ให้ข้าม
+
+    var startTime = new Date(row[6]); 
+
+    if (startTime >= upcomingMonday && startTime <= upcomingSunday) {
+      var status = row[13]; 
+      if (status === 'ยกเลิก' || status === 'ไม่อนุมัติ') continue;
+
+      upcomingUsage.push({
+        startTime: startTime,
+        endTime:   new Date(row[7]),
+        location:  row[4],
+        fullName:  row[1]
+      });
+    }
+  }
+
+  // 5. เรียงลำดับตามเวลา
+  upcomingUsage.sort(function(a, b) {
+    return a.startTime - b.startTime;
+  });
+
+  var thaiDays = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+  
+  function formatDateLocal(date) {
+    return Utilities.formatDate(date, 'Asia/Bangkok', 'dd/MM/yyyy');
+  }
+  function formatTimeLocal(date) {
+    return Utilities.formatDate(date, 'Asia/Bangkok', 'HH:mm');
+  }
+
+  // 6. ประกอบข้อความ
+  var messageHeader = '🗓️ แจ้งเตือนการใช้ห้องสัปดาห์นี้\n(' +
+                      formatDateLocal(upcomingMonday) + ' - ' + formatDateLocal(upcomingSunday) + '):\n';
+  var messageBody = '';
+
+  if (upcomingUsage.length === 0) {
+    messageBody = '\nไม่มีการใช้ห้องในสัปดาห์นี้';
+  } else {
+    upcomingUsage.forEach(function(usage, index) {
+      messageBody += '\n' + (index > 0 ? '----------\n' : '');
+      messageBody += 'ห้อง: ' + usage.location + '\n' +
+                     'วัน: ' + formatDateLocal(usage.startTime) + ' (' + thaiDays[usage.startTime.getDay()] + ')\n' +
+                     'เวลา: ' + formatTimeLocal(usage.startTime) + ' - ' + formatTimeLocal(usage.endTime) + '\n' +
+                     'ผู้ใช้: ' + usage.fullName;
+    });
+  }
+
+  var finalMessage = messageHeader + messageBody;
+  
+  // 7. ส่งข้อความเข้า LINE (โดยใช้ตัวแปรจากระบบใหม่)
+  var url = 'https://api.line.me/v2/bot/message/push';
+  var payload = { 'to': groupId, 'messages': [{ 'type': 'text', 'text': finalMessage }] };
+  var options = {
+    'method': 'post',
+    'contentType': 'application/json',
+    'headers': { 'Authorization': 'Bearer ' + token },
+    'payload': JSON.stringify(payload),
+    'muteHttpExceptions': true
+  };
+  UrlFetchApp.fetch(url, options);
+}
+
+// ==========================================
+// ⚙️ ENGINE สำหรับ Smart Triggers (ทำงานทุก 1 นาที)
+// ==========================================
+function setupMasterTrigger() {
+  const triggers = ScriptApp.getProjectTriggers();
+  // ลบทริกเกอร์เช็คเวลาตัวเก่าออกเพื่อป้องกันการทำงานซ้ำซ้อน
+  for (let i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'processSmartLineTriggers') {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+  
+  // สร้างทริกเกอร์ใหม่ ให้เรียกฟังก์ชัน processSmartLineTriggers ทุกๆ 1 นาที
+  ScriptApp.newTrigger('processSmartLineTriggers')
+    .timeBased()
+    .everyMinutes(1)
+    .create();
+}
