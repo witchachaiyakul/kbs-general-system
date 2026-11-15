@@ -1,4 +1,5 @@
 // public/js/index.js
+import "./auth-guard.js";
 import { insertAuditLog } from "./firestore.js";
 
 // ==========================================
@@ -18,6 +19,8 @@ const DEV_MOCK_USER = {
 
 let currentUser = null;
 
+const MAIN_PORTAL_URL = "https://kbs-gm.web.app/";
+
 // ==========================================
 // 🛡️ AUTH GUARD & INITIALIZATION
 // ==========================================
@@ -29,22 +32,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (IS_DEV_MODE) {
         console.warn("⚠️ ระบบกำลังทำงานใน [DEV MODE]");
         
-        // แสดง Badge และ Dropdown สลับ Role
         document.getElementById("devModeBadge")?.classList.remove("d-none");
         document.getElementById("devRoleSelector")?.classList.remove("d-none");
 
-        // ดึงจาก Session หรือใช้ Mock Data เริ่มต้น
         const savedDevUser = sessionStorage.getItem("kbs_user");
         currentUser = savedDevUser ? JSON.parse(savedDevUser) : DEV_MOCK_USER;
-        
-        // บันทึก Session จำลองไว้
         sessionStorage.setItem("kbs_user", JSON.stringify(currentUser));
 
-        // แสดงผล UI และตั้งค่าสิทธิ์
         initUserProfile(currentUser);
         applyRolePermissions(currentUser.role);
 
-        // ผูก Event สลับ Role สำหรับทดสอบสดบนหน้าจอ
         const selectDevRole = document.getElementById("selectDevRole");
         if (selectDevRole) {
             selectDevRole.value = currentUser.role || "admin";
@@ -61,13 +58,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // --------------------------------------------------
-    // 🔒 กรณี 2: ใช้งานจริง (ต้องมี Session จาก Login)
+    // 🔒 กรณี 2: ใช้งานจริง (รับ Session จาก auth-guard.js)
     // --------------------------------------------------
     const userSessionStr = sessionStorage.getItem("kbs_user");
 
     if (!userSessionStr) {
-        // หากไม่มี Session ให้กลับไปหน้า login.html
-        window.location.href = "login.html";
+        window.location.href = `${MAIN_PORTAL_URL}?redirect=${encodeURIComponent(window.location.href)}`;
         return;
     }
 
@@ -78,7 +74,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (e) {
         console.error("❌ อ่านข้อมูลผู้ใช้งานล้มเหลว:", e);
         sessionStorage.removeItem("kbs_user");
-        window.location.href = "login.html";
+        window.location.href = MAIN_PORTAL_URL;
         return;
     }
 
@@ -141,7 +137,7 @@ async function handleLogout() {
             await insertAuditLog("LOGOUT", `ออกจากระบบสำเร็จ`, currentUser);
         }
         sessionStorage.removeItem("kbs_user");
-        window.location.href = "login.html";
+        window.location.href = MAIN_PORTAL_URL; // กลับไปหน้า Portal กลาง
     }
 }
 
