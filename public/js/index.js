@@ -19,7 +19,8 @@ const DEV_MOCK_USER = {
 
 let currentUser = null;
 
-const MAIN_PORTAL_URL = "https://kbs-gm.web.app/";
+const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const MAIN_PORTAL_URL = isLocal ? "../index.html" : "https://kbs-gm.web.app/";
 
 // ==========================================
 // 🛡️ AUTH GUARD & INITIALIZATION
