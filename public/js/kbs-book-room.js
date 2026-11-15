@@ -1,4 +1,5 @@
 // public/js/kbs-book-room.js
+import "./auth-guard.js";
 import { db, getCommitteeByLineId, getKbsPlaces, insertAuditLog } from "./firestore.js";
 import {
   Timestamp,
@@ -35,10 +36,12 @@ let currentUser = null;
 // ==========================================
 // 🛡️ ตรวจสอบ Session จาก LINE Login & ดึงข้อมูลจาก committees
 // ==========================================
+const MAIN_PORTAL_URL = "https://kbs-gm.web.app/";
+
 async function initAuthSession() {
   const userSessionStr = sessionStorage.getItem("kbs_user");
   if (!userSessionStr) {
-    window.location.href = "login.html";
+    window.location.href = `${MAIN_PORTAL_URL}?redirect=${encodeURIComponent(window.location.href)}`;
     return false;
   }
 
@@ -47,7 +50,7 @@ async function initAuthSession() {
   } catch (e) {
     console.error("❌ อ่านข้อมูล Session ล้มเหลว:", e);
     sessionStorage.removeItem("kbs_user");
-    window.location.href = "login.html";
+    window.location.href = MAIN_PORTAL_URL;
     return false;
   }
 
