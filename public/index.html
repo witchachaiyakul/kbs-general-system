@@ -22,7 +22,7 @@
   <div class="container-fluid d-flex justify-content-between align-items-center">
     <div class="d-flex align-items-center">
       <span class="navbar-brand mb-0 h1 text-white me-2">
-        <i class="bi bi-speedometer2 me-2" style="color: var(--gold-accent, #ffc107);"></i>ระบบบริหารงานทั่วไป                                                                   
+        <i class="bi bi-speedometer2 me-2" style="color: var(--gold-accent, #ffc107);"></i>ระบบบริหารงานทั่วไป
       </span>
       <!-- Badge แสดงเมื่อเปิด DEV MODE -->
       <span id="devModeBadge" class="badge bg-warning text-dark d-none">
@@ -64,22 +64,32 @@
     <p class="brand-subtitle text-muted">ระบบบริหารจัดการกลุ่มบริหารงานทั่วไป โรงเรียนกาญจนาภิเษกวิทยาลัย กระบี่</p>
   </div>
 
-  <div class="row g-3 text-center justify-content-center">
+<div class="row g-3 text-center justify-content-center">
 
-    <div class="col-md-6 col-lg-3 menu-item" data-role="all">
+    <!-- เมนู: จองห้องประชุม (ID: kbsroom) -->
+    <div class="col-md-6 col-lg-3 menu-item d-none" data-menu-id="kbsroom">
       <div class="card menu-card h-100 shadow-sm border-0 p-3" style="cursor: pointer;" onclick="window.location.href='kbs-book-room.html'">
-        <div class="icon-box fs-1 text-primary mb-2"><i class="bi bi-file-earmark-text-fill"></i></div>
+        <div class="icon-box fs-1 text-primary mb-2"><i class="bi bi-calendar-check-fill"></i></div>
         <h5>จองห้องประชุม</h5>
         <p class="small text-muted mb-0">จองห้องประชุม สถานที่</p>
       </div>
     </div>
 
+    <!-- เมนู: กำหนดสิทธิการใช้งาน (ID: kbsGmManage) -->
+    <div class="col-md-6 col-lg-3 menu-item d-none" data-menu-id="kbsGmManage">
+      <div class="card menu-card h-100 shadow-sm border-0 p-3" style="cursor: pointer;" onclick="window.location.href='role.html'">
+        <div class="icon-box fs-1 text-warning mb-2"><i class="bi bi-shield-lock-fill"></i></div>
+        <h5>กำหนดสิทธิการใช้งาน</h5>
+        <p class="small text-muted mb-0">จัดการสิทธิผู้ใช้งานและเมนู</p>
+      </div>
+    </div>
 
   </div>
 </div>
 
-<!-- Firebase SDK & Custom Modules -->
-<script type="module" src="js/firestore.js"></script>
+<!-- Bootstrap 5 JS Bundle -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<!-- Custom Module -->
 <script type="module" src="js/index.js"></script>
 </body>
 </html>

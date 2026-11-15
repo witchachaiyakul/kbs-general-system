@@ -36,12 +36,18 @@ let currentUser = null;
 // ==========================================
 // 🛡️ ตรวจสอบ Session จาก LINE Login & ดึงข้อมูลจาก committees
 // ==========================================
-const MAIN_PORTAL_URL = "https://kbs-gm.web.app/";
+const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+const MAIN_PORTAL_URL = isLocal ? "index.html" : "https://kbs-gm.web.app/";
+
+function redirectToPortal() {
+  sessionStorage.removeItem("kbs_user");
+  window.location.href = `${MAIN_PORTAL_URL}?redirect=${encodeURIComponent(window.location.href)}`;
+}
 
 async function initAuthSession() {
   const userSessionStr = sessionStorage.getItem("kbs_user");
   if (!userSessionStr) {
-    window.location.href = `${MAIN_PORTAL_URL}?redirect=${encodeURIComponent(window.location.href)}`;
+    redirectToPortal();
     return false;
   }
 
@@ -49,13 +55,19 @@ async function initAuthSession() {
     currentUser = JSON.parse(userSessionStr);
   } catch (e) {
     console.error("❌ อ่านข้อมูล Session ล้มเหลว:", e);
-    sessionStorage.removeItem("kbs_user");
-    window.location.href = MAIN_PORTAL_URL;
+    redirectToPortal();
     return false;
   }
 
+  // 1. ตรวจสอบวันหมดอายุของ Session
+  if (currentUser.expiresAt && Date.now() > currentUser.expiresAt) {
+    redirectToPortal();
+    return false;
+  }
+
+  // 2. ใช้ข้อมูลที่ auth-guard.js ดึงมาให้แล้ว (หากข้อมูลไม่ครบค่อยดึงเสริมจาก Firestore)
   const lineUserId = currentUser.line_user_id || currentUser.userId || currentUser.id;
-  if (lineUserId && lineUserId !== "DEV_USER_001") {
+  if (lineUserId && (!currentUser.name || !currentUser.role)) {
     const committeeData = await getCommitteeByLineId(lineUserId);
     if (committeeData) {
       currentUser = {
@@ -64,18 +76,32 @@ async function initAuthSession() {
         line_user_id: lineUserId,
         name: committeeData.name || currentUser.name,
         pos: committeeData.pos || currentUser.pos || "",
-        role: committeeData.role || currentUser.role || "staff"
+        role: (committeeData.role || currentUser.role || "staff").toLowerCase(),
+        general_permission: Array.isArray(committeeData.general_permission)
+          ? committeeData.general_permission
+          : []
       };
       sessionStorage.setItem("kbs_user", JSON.stringify(currentUser));
     } else {
-      showMessage(appMessage, "ไม่พบข้อมูลทะเบียนบุคลากร กรุณาลงทะเบียนก่อนใช้งาน", true);
+      showMessage(appMessage, "ไม่พบข้อมูลทะเบียนบุคลากร กรุณาติดต่อผู้ดูแลระบบ", true);
+      return false;
     }
   }
-  // แสดงข้อมูลบน Navbar มาตรฐานเดียวกับทุกระบบ
+
+  // 3. ตรวจสอบสิทธิ์การเข้าถึงเมนูจองห้อง ('kbsroom') สำหรับผู้ใช้ที่ไม่ใช่ Admin
+  const role = (currentUser.role || "staff").toLowerCase();
+  const isAdmin = role === "admin";
+  const perms = Array.isArray(currentUser.general_permission) ? currentUser.general_permission : [];
+  if (!isAdmin && perms.length > 0 && !perms.includes("kbsroom")) {
+    alert("คุณไม่มีสิทธิ์เข้าใช้งานระบบจองห้องประชุม");
+    window.location.href = MAIN_PORTAL_URL;
+    return false;
+  }
+
+  // 4. แสดงข้อมูลบน Navbar มาตรฐานเดียวกับทุกระบบ
   initUserProfile(currentUser);
 
-  // ตรวจสอบสิทธิ์ Admin เพื่อเปิดแท็บจัดการคำขอจอง
-  const isAdmin = (currentUser.role || "").toLowerCase() === "admin";
+  // 5. เปิดแท็บ "สำหรับผู้ดูแล" เฉพาะ Role: admin
   const adminTabBtn = document.getElementById("tab-admin-btn");
   if (adminTabBtn) {
     adminTabBtn.hidden = !isAdmin;
@@ -91,17 +117,16 @@ async function initAuthSession() {
 }
 
 function initUserProfile(user) {
-  const nameElem = document.getElementById("headerUserName");
-  const posElem = document.getElementById("headerUserPosition");
-  const roleElem = document.getElementById("headerUserRole");
-  const imgElem = document.getElementById("headerUserImg");
+    const nameElem = document.getElementById("headerUserName");
+    const posElem = document.getElementById("headerUserPosition");
+    const roleElem = document.getElementById("headerUserRole");
+    const imgElem = document.getElementById("headerUserImg");
 
-  if (nameElem) nameElem.textContent = user.name || "ผู้ใช้งาน";
-  if (posElem) posElem.textContent = `ตำแหน่ง: ${user.pos || user.position || "บุคลากร"}`;
-  if (roleElem) roleElem.textContent = `Role: ${(user.role || "staff").toUpperCase()}`;
-  if (imgElem && user.picture) imgElem.src = user.picture;
+    if (nameElem) nameElem.textContent = user.name || "ผู้ใช้งาน";
+    if (posElem) posElem.textContent = `ตำแหน่ง: ${user.pos || user.position || "บุคลากร"}`;
+    if (roleElem) roleElem.textContent = `Role: ${(user.role || "staff").toUpperCase()}`;
+    if (imgElem && user.picture) imgElem.src = user.picture;
 }
-
 // ==========================================
 // 🔔 UI Helpers
 // ==========================================

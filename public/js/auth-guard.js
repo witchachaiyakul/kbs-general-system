@@ -4,8 +4,8 @@ import { getCommitteeByLineId } from "./firestore.js";
 // ============================================================================
 // ⚙️ CONFIGURATION
 // ============================================================================
-const IS_DEV_MODE = false; // 🎯 ตั้งเป็น true ตอนพัฒนา / เปลี่ยนเป็น false ก่อน Deploy ขึ้นเว็บจริง
-const DEV_LINE_USER_ID = "Uee9e25daa4093ff804637d5c55c6be03"; // 🎯 LINE User ID สำหรับทดสอบใน DEV MODE
+const IS_DEV_MODE = true; // 🎯 ปิดเมื่อทดสอบรวมระบบผ่าน kbs-main
+const DEV_LINE_USER_ID = "Uee9e25daa4093ff804637d5c55c6be03";
 
 const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 const MAIN_PORTAL_URL = isLocal ? "../index.html" : "https://kbs-gm.web.app/";
@@ -16,41 +16,67 @@ function redirectToMainPortal() {
   window.location.href = `${MAIN_PORTAL_URL}?redirect=${currentUrl}`;
 }
 
+/**
+ * 🔍 ดึงสิทธิ์เฉพาะของระบบบริหารทั่วไป (role และ general_permission) จากคอลเลกชัน 'committees'
+ */
+export async function fetchGeneralUserPermissions(docId, lineUserId, fallbackRole = "staff") {
+  const extractPerms = (d) => ({
+    role: (d.role || fallbackRole).toLowerCase(),
+    general_permission: Array.isArray(d.general_permission)
+      ? d.general_permission
+      : (Array.isArray(d.permissions) ? d.permissions : undefined)
+  });
+
+  try {
+    if (docId) {
+      const userSnap = await getDoc(doc(db, "committees", docId));
+      if (userSnap.exists()) return extractPerms(userSnap.data());
+    }
+
+    if (lineUserId) {
+      const q = query(collection(db, "committees"), where("line_user_id", "==", lineUserId));
+      const snap = await getDocs(q);
+      if (!snap.empty) return extractPerms(snap.docs[0].data());
+    }
+  } catch (err) {
+    console.warn("⚠️ ดึงสิทธิ์จาก committees ไม่สำเร็จ ใช้สิทธิ์พื้นฐานแทน:", err);
+  }
+
+  return { role: fallbackRole.toLowerCase(), general_permission: undefined };
+}
+
+
+
 // ============================================================================
 // 🔓 1. DEV MODE: ดึงข้อมูลจริงจาก Firestore ด้วย DEV_LINE_USER_ID
 // ============================================================================
 if (IS_DEV_MODE) {
   console.warn(`⚠️ [Auth Guard] DEV MODE: กำลังตรวจสอบสิทธิ์ด้วย LINE ID: ${DEV_LINE_USER_ID}`);
-  const existingRaw = sessionStorage.getItem(SESSION_KEY);
-  const existingUser = existingRaw ? JSON.parse(existingRaw) : null;
-
-  if (!existingUser || existingUser.line_user_id !== DEV_LINE_USER_ID) {
-    const committee = await getCommitteeByLineId(DEV_LINE_USER_ID);
-    if (committee) {
-      const devUserSession = {
-        docId: committee.docId,
-        id: committee.line_user_id,
-        line_user_id: committee.line_user_id,
-        name: committee.name || "ผู้ใช้งานทดสอบ",
-        pos: committee.pos || "",
-        position: committee.pos || "บุคลากร",
-        picture: committee.picture || committee.pictureUrl || "https://cdn-icons-png.flaticon.com/512/149/149071.png",
-        role: committee.role || "staff",
-        status: committee.status || "done",
-        expiresAt: Date.now() + 8 * 60 * 60 * 1000
-      };
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(devUserSession));
-    }
+  const committee = await getCommitteeByLineId(DEV_LINE_USER_ID);
+  if (committee) {
+    const devUserSession = {
+      docId: committee.docId,
+      id: committee.line_user_id,
+      line_user_id: committee.line_user_id,
+      name: committee.name || "ผู้ใช้งานทดสอบ",
+      pos: committee.pos || "",
+      position: committee.pos || "บุคลากร",
+      picture: committee.picture || committee.pictureUrl || "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+      role: (committee.role || "staff").toLowerCase(),
+      general_permission: Array.isArray(committee.general_permission) ? committee.general_permission : undefined,
+      status: committee.status || "done",
+      expiresAt: Date.now() + 8 * 60 * 60 * 1000
+    };
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(devUserSession));
   }
 } else {
   // ============================================================================
-  // 🔒 2. ใช้งานจริง: รับ ?token=... ที่ส่งข้ามมาจาก kbs-main
+  // 🔒 2. ใช้งานจริง: รับ ?token=... หรือ localStorage ที่ส่งมาจาก kbs-main
   // ============================================================================
-const urlParams = new URLSearchParams(window.location.search);
+  const urlParams = new URLSearchParams(window.location.search);
   const incomingToken = urlParams.get("token");
   let portalSession = null;
 
-  // กรณีที่ 1: ข้าม Domain (รับค่าจาก ?token=...)
   if (incomingToken) {
     try {
       const jsonStr = decodeURIComponent(escape(atob(incomingToken)));
@@ -61,9 +87,7 @@ const urlParams = new URLSearchParams(window.location.search);
     } catch (err) {
       console.error("❌ ถอดรหัส Token ล้มเหลว:", err);
     }
-  } 
-  // กรณีที่ 2: Domain เดียวกัน (อ่านจาก localStorage กลางของ kbs-main)
-  else if (localStorage.getItem("kbs_user_session")) {
+  } else if (localStorage.getItem("kbs_user_session")) {
     try {
       portalSession = JSON.parse(localStorage.getItem("kbs_user_session"));
     } catch (e) {
@@ -71,7 +95,7 @@ const urlParams = new URLSearchParams(window.location.search);
     }
   }
 
-  // แปลงข้อมูลจาก kbs-main มาเก็บลง sessionStorage ("kbs_user") ของระบบย่อย
+  // แปลงข้อมูลจาก kbs-main และดึงสิทธิ์ล่าสุด (general_permission) จาก Firestore ('committees')
   if (portalSession && portalSession.user) {
     if (portalSession.expiresAt && Date.now() > portalSession.expiresAt) {
       localStorage.removeItem("kbs_user_session");
@@ -79,25 +103,32 @@ const urlParams = new URLSearchParams(window.location.search);
       redirectToMainPortal();
     } else {
       const u = portalSession.user;
+      const lineId = u.line_user_id || u.userId || u.id || "";
+      const freshCommittee = lineId ? await getCommitteeByLineId(lineId) : null;
+
       const mappedUser = {
-        docId: u.docId || "",
-        id: u.line_user_id || u.userId || "",
-        line_user_id: u.line_user_id || u.userId || "",
-        name: u.name || "ผู้ใช้งาน",
-        pos: u.pos || "",
-        position: u.pos || "บุคลากร",
-        picture: u.picture || u.pictureUrl || "",
-        role: u.role || "staff",
+        docId: freshCommittee?.docId || u.docId || "",
+        id: lineId,
+        line_user_id: lineId,
+        name: freshCommittee?.name || u.name || "ผู้ใช้งาน",
+        pos: freshCommittee?.pos || u.pos || "",
+        position: freshCommittee?.pos || u.pos || "บุคลากร",
+        picture: u.picture || u.pictureUrl || freshCommittee?.picture || "",
+        role: (freshCommittee?.role || u.role || "staff").toLowerCase(),
+        general_permission: Array.isArray(freshCommittee?.general_permission)
+          ? freshCommittee.general_permission
+          : (Array.isArray(u.general_permission) ? u.general_permission : undefined),
         status: "done",
         expiresAt: portalSession.expiresAt || (Date.now() + 8 * 60 * 60 * 1000)
       };
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(mappedUser));
     }
   }
+
   // ============================================================================
-  // 🛡️ 3. ตรวจสอบ Session เดิมใน sessionStorage
+  // 🛡️ 3. ตรวจสอบ Session เดิมใน sessionStorage และซิงก์สิทธิ์ล่าสุดจาก Firestore
   // ============================================================================
-const savedUserStr = sessionStorage.getItem(SESSION_KEY);
+  const savedUserStr = sessionStorage.getItem(SESSION_KEY);
   if (!savedUserStr) {
     redirectToMainPortal();
   } else {
@@ -106,6 +137,16 @@ const savedUserStr = sessionStorage.getItem(SESSION_KEY);
       if (savedUser.expiresAt && Date.now() > savedUser.expiresAt) {
         sessionStorage.removeItem(SESSION_KEY);
         redirectToMainPortal();
+      } else if (savedUser.line_user_id && !Array.isArray(savedUser.general_permission)) {
+        // กรณีมี Session เก่าค้างอยู่และยังไม่มี general_permission ให้ดึงอัปเดตทันที
+        const freshCommittee = await getCommitteeByLineId(savedUser.line_user_id);
+        if (freshCommittee) {
+          savedUser.role = (freshCommittee.role || savedUser.role || "staff").toLowerCase();
+          if (Array.isArray(freshCommittee.general_permission)) {
+            savedUser.general_permission = freshCommittee.general_permission;
+          }
+          sessionStorage.setItem(SESSION_KEY, JSON.stringify(savedUser));
+        }
       }
     } catch (e) {
       sessionStorage.removeItem(SESSION_KEY);

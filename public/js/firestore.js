@@ -31,6 +31,35 @@ export const db = getFirestore(app);
 // ============================================================================
 
 /**
+ * 🔍 ดึงสิทธิ์เฉพาะของระบบบริหารทั่วไป (role และ general_permission) จากคอลเลกชัน 'committees'
+ */
+export async function fetchGeneralUserPermissions(docId, lineUserId, fallbackRole = "staff") {
+    const extractPerms = (d) => ({
+        role: (d.role || fallbackRole).toLowerCase(),
+        general_permission: Array.isArray(d.general_permission)
+            ? d.general_permission
+            : (Array.isArray(d.permissions) ? d.permissions : undefined)
+    });
+
+    try {
+        if (docId) {
+            const userSnap = await getDoc(doc(db, "committees", docId));
+            if (userSnap.exists()) return extractPerms(userSnap.data());
+        }
+
+        if (lineUserId) {
+            const q = query(collection(db, "committees"), where("line_user_id", "==", lineUserId));
+            const snap = await getDocs(q);
+            if (!snap.empty) return extractPerms(snap.docs[0].data());
+        }
+    } catch (err) {
+        console.warn("⚠️ ดึงสิทธิ์จาก committees ไม่สำเร็จ ใช้สิทธิ์พื้นฐานแทน:", err);
+    }
+
+    return { role: fallbackRole.toLowerCase(), general_permission: undefined };
+}
+
+/**
  * ตรวจสอบสิทธิ์ผู้ใช้งานจาก LINE User ID ใน collection 'committees'
  */
 export async function getCommitteeByLineId(lineUserId) {
