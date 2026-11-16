@@ -174,29 +174,287 @@ function createStatus(status) {
   return badge;
 }
 
-async function populateRoomOptions() {
-  const select = document.getElementById("location");
-  if (!select) return;
+// ==========================================
+// 🏢 ระบบจัดการอุปกรณ์และสิ่งอำนวยความสะดวกประจำห้อง
+// ==========================================
+function getPlaceEquipmentList(place) {
+  if (!place) return [];
 
-  select.innerHTML = '<option value="">กำลังโหลดรายชื่อสถานที่...</option>';
-  availablePlaces = await getKbsPlaces();
+  // 1. ถ้ามีฟิลด์ equipment ใน Firestore
+  if (Array.isArray(place.equipment) && place.equipment.length > 0) {
+    return place.equipment;
+  }
+  if (typeof place.equipment === "string" && place.equipment.trim()) {
+    return place.equipment.split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
+  }
+  if (Array.isArray(place.facilities) && place.facilities.length > 0) {
+    return place.facilities;
+  }
 
-  select.innerHTML = '<option value="">เลือกสถานที่</option>';
-  if (availablePlaces.length === 0) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "ไม่พบข้อมูลสถานที่ในระบบ";
-    option.disabled = true;
-    select.append(option);
+  // 2. ข้อมูลอุปกรณ์เริ่มต้นตามประเภท/ชื่อห้องของโรงเรียนกาญจนาภิเษกวิทยาลัย กระบี่
+  const name = (place.name || "").toLowerCase();
+  if (name.includes("auditorium") || name.includes("audiotorium")) {
+    return ["Projector พร้อมจอภาพ", "เครื่องเสียงห้องประชุม", "ไมโครโฟนไร้สาย 2 ตัว", "เครื่องปรับอากาศ", "คอมพิวเตอร์ควบคุม"];
+  }
+  if (name.includes("หอประชุม")) {
+    return ["เวทีการแสดงขนาดใหญ่", "ระบบเครื่องเสียงหอประชุม", "ไมโครโฟน 4 ตัว", "Projector พร้อมจอภาพ", "ไฟสปอตไลท์"];
+  }
+  if (name.includes("โดม") || name.includes("ราชพฤกษ์")) {
+    return ["ลานกิจกรรมอเนกประสงค์", "เวทีกิจกรรม", "ระบบเครื่องเสียงกลางแจ้ง", "ไมโครโฟนไร้สาย 2 ตัว"];
+  }
+  if (name.includes("ทูบี") || name.includes("to be")) {
+    return ["เวทีกิจกรรม", "เครื่องเสียง", "ไมโครโฟน", "เครื่องปรับอากาศ"];
+  }
+  if (name.includes("ช่อราชพฤกษ์")) {
+    return ["Projector พร้อมจอภาพ", "เครื่องเสียง", "ไมโครโฟน 2 ตัว", "เครื่องปรับอากาศ"];
+  }
+  if (name.includes("สมาคม") || name.includes("ผู้ปกครอง")) {
+    return ["โต๊ะประชุม", "เครื่องปรับอากาศ", "กระดานไวท์บอร์ด", "ไมโครโฟน"];
+  }
+  return ["เครื่องเสียงห้องประชุม", "ไมโครโฟน", "เครื่องปรับอากาศ"];
+}
+
+function getEquipmentIcon(item) {
+  const text = (item || "").toLowerCase();
+  if (text.includes("projector") || text.includes("โปรเจคเตอร์") || text.includes("จอ") || text.includes("tv")) return "📽️";
+  if (text.includes("เสียง") || text.includes("ลำโพง")) return "🔊";
+  if (text.includes("ไมค์") || text.includes("mic")) return "🎙️";
+  if (text.includes("แอร์") || text.includes("ปรับอากาศ")) return "❄️";
+  if (text.includes("เวที") || text.includes("ลาน")) return "🎭";
+  if (text.includes("คอม") || text.includes("pc")) return "💻";
+  if (text.includes("โต๊ะ") || text.includes("เก้าอี้")) return "🪑";
+  if (text.includes("บอร์ด") || text.includes("กระดาน")) return "📋";
+  if (text.includes("ไฟ")) return "💡";
+  return "✨";
+}
+
+function renderRoomFacilities(placeId) {
+  const container = document.getElementById("room-facilities-card");
+  const emptyHint = document.getElementById("facility-empty-hint");
+  const content = document.getElementById("facility-content");
+  const nameElem = document.getElementById("facility-room-name");
+  const capBadge = document.getElementById("facility-room-cap");
+  const tagList = document.getElementById("facility-tags");
+
+  if (!container || !emptyHint || !content) return;
+
+  const place = availablePlaces.find((p) => String(p.id) === String(placeId));
+  if (!place) {
+    container.classList.remove("active");
+    emptyHint.classList.remove("d-none");
+    content.classList.add("d-none");
+    if (tagList) tagList.innerHTML = "";
     return;
   }
 
-  availablePlaces.forEach((place) => {
-    const option = document.createElement("option");
-    option.value = place.id; // เก็บรหัส เช่น "11018"
-    option.textContent = place.capacity ? `${place.name} (รองรับ ${place.capacity} คน)` : place.name;
-    select.append(option);
+  container.classList.add("active");
+  emptyHint.classList.add("d-none");
+  content.classList.remove("d-none");
+
+  if (nameElem) {
+    nameElem.innerHTML = `<i class="bi bi-building-check text-gold me-1"></i> รายการอุปกรณ์และสิ่งอำนวยความสะดวกใน <strong>${place.name}</strong>:`;
+  }
+
+  if (capBadge) {
+    if (place.capacity) {
+      capBadge.textContent = `รองรับ ${place.capacity} คน`;
+      capBadge.classList.remove("d-none");
+    } else {
+      capBadge.classList.add("d-none");
+    }
+  }
+
+  const items = getPlaceEquipmentList(place);
+  if (tagList) {
+    tagList.innerHTML = "";
+    items.forEach((item) => {
+      const tag = document.createElement("span");
+      tag.className = "facility-tag";
+      tag.innerHTML = `<span class="tag-icon">${getEquipmentIcon(item)}</span> <span>${item}</span>`;
+      tagList.appendChild(tag);
+    });
+  }
+}
+
+// ==========================================
+// 🏢 ระบบการเลือกห้องประชุมแบบการ์ด (Grid) & แสดงรายละเอียด
+// ==========================================
+function selectRoom(place) {
+  if (!place) return;
+
+  const locationInput = document.getElementById("location");
+
+  // หากกดซ้ำห้องเดิมที่เลือกอยู่ ให้ยกเลิกการเลือกทันที (Toggle Deselect)
+  if (locationInput && locationInput.value === String(place.id)) {
+    resetRoomSelection(true);
+    return;
+  }
+
+  if (locationInput) {
+    locationInput.value = place.id;
+  }
+
+  // ปรับสถานะการเน้นสีของการ์ดห้องที่เลือก (Selected State)
+  document.querySelectorAll(".room-card").forEach((card) => {
+    const isThis = card.dataset.placeId === String(place.id);
+    card.classList.toggle("selected", isThis);
+    card.setAttribute("aria-selected", isThis ? "true" : "false");
   });
+
+  // ซ่อนกล่องแจ้งเตือน และเปิดส่วนรายละเอียดการจอง
+  const detailsSection = document.getElementById("booking-details-section");
+  const promptBanner = document.getElementById("room-selection-prompt");
+  if (detailsSection) {
+    detailsSection.classList.remove("d-none");
+  }
+  if (promptBanner) {
+    promptBanner.classList.add("d-none");
+  }
+
+  // อัปเดตแถบชื่อห้องและป้ายความจุในส่วนรายละเอียด
+  const currentRoomName = document.getElementById("current-room-name");
+  const currentRoomCap = document.getElementById("current-room-capacity");
+  if (currentRoomName) currentRoomName.textContent = place.name;
+  if (currentRoomCap) {
+    currentRoomCap.textContent = place.capacity ? `รองรับ ${place.capacity} คน` : "ห้องมาตรฐาน";
+  }
+
+  // อัปเดตรายการอุปกรณ์ประจำห้อง
+  renderRoomFacilities(place.id);
+
+  // เลื่อนหน้าจอลงมายังส่วนรายละเอียดอย่างนุ่มนวล
+  if (detailsSection) {
+    setTimeout(() => {
+      detailsSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 150);
+  }
+}
+
+function resetRoomSelection(scrollBack = true) {
+  const locationInput = document.getElementById("location");
+  if (locationInput) locationInput.value = "";
+
+  document.querySelectorAll(".room-card").forEach((card) => {
+    card.classList.remove("selected");
+    card.setAttribute("aria-selected", "false");
+  });
+
+  const detailsSection = document.getElementById("booking-details-section");
+  const promptBanner = document.getElementById("room-selection-prompt");
+  if (detailsSection) detailsSection.classList.add("d-none");
+  if (promptBanner) promptBanner.classList.remove("d-none");
+
+  renderRoomFacilities("");
+
+  if (scrollBack) {
+    const roomGrid = document.getElementById("room-grid");
+    if (roomGrid) {
+      roomGrid.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+}
+
+async function populateRoomOptions() {
+  const roomGrid = document.getElementById("room-grid");
+  if (!roomGrid) {
+    console.error("❌ ไม่พบ element #room-grid ในหน้าเว็บ");
+    return;
+  }
+
+  // แสดงข้อความโหลด
+  roomGrid.innerHTML = `
+    <div class="col-12 text-center py-4" style="grid-column: 1 / -1; color: var(--kbs-text-secondary);">
+      <div class="spinner-border text-warning spinner-border-sm me-2" role="status"></div>
+      กำลังโหลดรายชื่อห้องประชุมจาก Firebase...
+    </div>
+  `;
+
+  try {
+    availablePlaces = await getKbsPlaces();
+    console.log("📍 รายชื่อสถานที่ที่ได้รับ:", availablePlaces);
+
+    roomGrid.innerHTML = "";
+    if (!availablePlaces || availablePlaces.length === 0) {
+      roomGrid.innerHTML = `
+        <div class="col-12 text-center py-4 text-warning" style="grid-column: 1 / -1;">
+          <i class="bi bi-exclamation-triangle me-1"></i> ไม่พบข้อมูลห้องประชุมในระบบ
+        </div>
+      `;
+      return;
+    }
+
+    availablePlaces.forEach((place) => {
+      const card = document.createElement("div");
+      card.className = "room-card";
+      card.dataset.placeId = String(place.id);
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+      card.setAttribute("aria-label", place.name);
+
+      // รูปภาพห้องประชุม (ช่องสีขาวสำหรับใส่รูปทีหลัง หรือแสดงรูปถ้ามีใน Firestore)
+      const photoHtml = place.photoUrl || place.imageUrl
+        ? `<img src="${place.photoUrl || place.imageUrl}" alt="${place.name}">`
+        : `<div class="room-photo-placeholder">
+             <i class="bi bi-building"></i>
+             <span>รูปภาพห้องประชุม</span>
+           </div>`;
+
+      const capText = place.capacity ? `รองรับ ${place.capacity} คน` : "ห้องมาตรฐาน";
+
+      card.innerHTML = `
+        <span class="room-selected-badge"><i class="bi bi-check-circle-fill"></i> เลือกแล้ว <span class="unselect-hint">(กดซ้ำเพื่อยกเลิก)</span></span>
+        <div class="room-photo-frame">
+          ${photoHtml}
+        </div>
+        <div class="room-card-info">
+          <div class="room-card-title">${place.name}</div>
+          <div class="room-card-meta">
+            <span><i class="bi bi-people me-1"></i> ${capText}</span>
+            <span class="text-gold small fw-semibold">คลิกเลือก <i class="bi bi-arrow-right"></i></span>
+          </div>
+        </div>
+      `;
+
+      card.addEventListener("click", () => {
+        selectRoom(place);
+      });
+
+      card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          selectRoom(place);
+        }
+      });
+
+      roomGrid.appendChild(card);
+    });
+
+    // ผูกปุ่มเปลี่ยนห้อง (Change Room)
+    const btnChange = document.getElementById("btn-change-room");
+    if (btnChange && !btnChange.dataset.bound) {
+      btnChange.dataset.bound = "true";
+      btnChange.addEventListener("click", () => {
+        roomGrid.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+
+    // ผูกปุ่มยกเลิกการเลือกห้อง (Cancel/Deselect Room)
+    const btnCancel = document.getElementById("btn-cancel-room");
+    if (btnCancel && !btnCancel.dataset.bound) {
+      btnCancel.dataset.bound = "true";
+      btnCancel.addEventListener("click", () => {
+        resetRoomSelection(true);
+      });
+    }
+
+  } catch (err) {
+    console.error("❌ โหลดสถานที่ล้มเหลว:", err);
+    roomGrid.innerHTML = `
+      <div class="col-12 text-center py-4 text-danger" style="grid-column: 1 / -1;">
+        <i class="bi bi-x-circle me-1"></i> โหลดข้อมูลสถานที่ล้มเหลว กรุณารีเฟรชหน้าเว็บอีกครั้ง
+      </div>
+    `;
+  }
 }
 
 function populateYearFilter() {
@@ -292,7 +550,20 @@ function getBookingFormData(form) {
   const selectedPlaceId = String(formData.get("location") || "").trim();
   const selectedPlace = availablePlaces.find((p) => String(p.id) === selectedPlaceId);
   if (!selectedPlace) {
-    throw new Error("กรุณาเลือกสถานที่จากรายการ");
+    const roomGrid = document.getElementById("room-grid");
+    if (roomGrid) roomGrid.scrollIntoView({ behavior: "smooth", block: "start" });
+    throw new Error("กรุณากดเลือกห้องประชุมที่ต้องการใช้งานด้านบน");
+  }
+
+  // ดึงรายการอุปกรณ์ประจำห้องอัตโนมัติ พร้อมสิ่งที่ผู้ใช้ระบุเพิ่มเติม
+  const roomEquipment = getPlaceEquipmentList(selectedPlace);
+  const extraEquip = String(formData.get("equipmentExtra") || "").trim();
+  const finalEquipment = [...roomEquipment];
+  if (extraEquip) {
+    finalEquipment.push(`เพิ่มเติม: ${extraEquip}`);
+  }
+  if (finalEquipment.length === 0) {
+    finalEquipment.push("อุปกรณ์มาตรฐานประจำห้อง");
   }
 
   return {
@@ -305,7 +576,7 @@ function getBookingFormData(form) {
     purpose: String(formData.get("purpose")).trim(),
     startTime: Timestamp.fromDate(startTime),
     endTime: Timestamp.fromDate(endTime),
-    equipment: formData.getAll("equipment"),
+    equipment: finalEquipment,
     tables: Number(formData.get("tables") || 0),
     chairs: Number(formData.get("chairs") || 0),
     status: "รออนุมัติ"
@@ -366,6 +637,7 @@ async function submitBooking(event) {
     }
 
     form.reset();
+    resetRoomSelection();
     showMessage(appMessage, "ส่งคำขอจองเรียบร้อยแล้ว กรุณารอผู้ดูแลอนุมัติ", false);
     await loadPublicBookings();
   } catch (error) {
@@ -494,16 +766,24 @@ function bindNavigation() {
 }
 
 async function initialize() {
+  console.log("🚀 [kbs-book-room] initialize() เริ่มทำงาน...");
+
+  // 1. โหลดรายการสถานที่และตัวกรองทันที ไม่ต้องรอ Auth
+  await populateRoomOptions();
+  populateYearFilter();
+  bindNavigation();
+
+  // 2. ตรวจสอบ Session และสิทธิ์ผู้ใช้งาน
   if (!(await initAuthSession())) return;
 
   publicBookingsBody = document.getElementById("public-bookings");
   adminBookingsBody = document.getElementById("admin-bookings");
 
-  await populateRoomOptions();
-  populateYearFilter();
-  bindNavigation();
-
-  document.getElementById("booking-form").addEventListener("submit", submitBooking);
+  const bookingForm = document.getElementById("booking-form");
+  bookingForm.addEventListener("submit", submitBooking);
+  bookingForm.addEventListener("reset", () => {
+    setTimeout(resetRoomSelection, 50);
+  });
   document.getElementById("month-filter").addEventListener("change", renderPublicBookings);
   document.getElementById("year-filter").addEventListener("change", renderPublicBookings);
   document.getElementById("refresh-bookings").addEventListener("click", loadPublicBookings);
@@ -515,6 +795,96 @@ async function initialize() {
       updateBookingStatus(button.dataset.bookingId, button.dataset.status, button);
     }
   });
+
+  loadPublicBookings();
 }
 
-document.addEventListener("DOMContentLoaded", initialize);
+// ==========================================
+// 🖼️ ระบบอัพโหลดรูปภาพ
+// ==========================================
+const selectedFiles = [];
+
+function handleImageFiles(files) {
+  const container = document.getElementById("img-preview-container");
+  const countEl = document.getElementById("img-count");
+
+  Array.from(files).forEach(file => {
+    if (!file.type.startsWith("image/")) return;
+    if (selectedFiles.length >= 5) {
+      alert("อัพโหลดได้สูงสุด 5 รูปภาพ");
+      return;
+    }
+    selectedFiles.push(file);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const placeholder = document.getElementById("img-placeholder");
+      if (placeholder) placeholder.remove();
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "position-relative";
+      wrapper.style.cssText = "width:90px; height:90px;";
+
+      const img = document.createElement("img");
+      img.src = e.target.result;
+      img.className = "rounded-2 border";
+      img.style.cssText = "width:90px; height:90px; object-fit:cover;";
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "btn btn-danger btn-sm position-absolute top-0 end-0 p-0 d-flex align-items-center justify-content-center";
+      removeBtn.style.cssText = "width:20px; height:20px; font-size:11px;";
+      removeBtn.innerHTML = '<i class="bi bi-x"></i>';
+      removeBtn.onclick = () => {
+        const idx = selectedFiles.indexOf(file);
+        if (idx > -1) selectedFiles.splice(idx, 1);
+        wrapper.remove();
+        updateImgCount();
+      };
+
+      wrapper.appendChild(img);
+      wrapper.appendChild(removeBtn);
+      container.appendChild(wrapper);
+      updateImgCount();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function updateImgCount() {
+  const countEl = document.getElementById("img-count");
+  const container = document.getElementById("img-preview-container");
+  if (selectedFiles.length > 0) {
+    countEl.textContent = `เลือกแล้ว ${selectedFiles.length}/5 รูป`;
+    countEl.hidden = false;
+  } else {
+    countEl.hidden = true;
+    if (!document.getElementById("img-placeholder")) {
+      container.innerHTML = `
+        <div id="img-placeholder" class="text-center w-100">
+          <div class="small" style="color:var(--kbs-text2);">ยังไม่ได้เลือกรูปภาพ (สูงสุด 5 รูป)</div>
+        </div>`;
+    }
+  }
+}
+
+function runInit() {
+  const imgUpload = document.getElementById("img-upload");
+  const imgCamera = document.getElementById("img-camera");
+  if (imgUpload && !imgUpload.dataset.bound) {
+    imgUpload.dataset.bound = "true";
+    imgUpload.addEventListener("change", (e) => { handleImageFiles(e.target.files); e.target.value = ""; });
+  }
+  if (imgCamera && !imgCamera.dataset.bound) {
+    imgCamera.dataset.bound = "true";
+    imgCamera.addEventListener("change", (e) => { handleImageFiles(e.target.files); e.target.value = ""; });
+  }
+
+  initialize();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", runInit);
+} else {
+  runInit();
+}

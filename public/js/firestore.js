@@ -155,34 +155,58 @@ export async function insertAuditLog(actionType, detailsTxt, lineUserObj) {
 }
 
 /**
- * ดึงรายการสถานที่/ห้องประชุมทั้งหมดจาก collection 'kbs_place'
+ * ดึงรายการสถานที่/ห้องประชุมทั้งหมดจาก Firestore
+ * รองรับ collection: 'kbs_place', 'places', 'kbs_places', 'rooms'
+ * และรองรับชื่อฟิลด์หลากหลาย (name, placeName, place_name, location, roomName, title)
  */
 export async function getKbsPlaces() {
-    try {
-        const querySnapshot = await getDocs(collection(db, "kbs_place"));
-        const places = [];
+    const candidateCollections = ["kbs_place", "places", "kbs_places", "rooms"];
+    
+    for (const colName of candidateCollections) {
+        try {
+            const querySnapshot = await getDocs(collection(db, colName));
+            if (!querySnapshot.empty) {
+                const places = [];
+                querySnapshot.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    if (data.active === false) return;
 
-        querySnapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            if (data.active === false) return;
+                    const placeName = data.name || data.placeName || data.place_name || data.location || data.roomName || data.room_name || data.title || docSnap.id;
+                    const placeCap = data.capacity || data.cap || data.seats || data.seat || data.people || null;
 
-            places.push({
-                ...data,
-                id: String(data.id || docSnap.id),
-                name: String(data.name || docSnap.id),
-                order: typeof data.order === "number" ? data.order : 999
-            });
-        });
+                    places.push({
+                        ...data,
+                        id: String(data.id || data.placeId || data.place_id || docSnap.id),
+                        name: String(placeName),
+                        capacity: placeCap,
+                        order: typeof data.order === "number" ? data.order : 999
+                    });
+                });
 
-        // เรียงตาม order (ถ้ามี) -> ตามรหัส id (11018, 11019...) -> ตามชื่อภาษาไทย
-        places.sort((a, b) => 
-            a.order - b.order || 
-            a.id.localeCompare(b.id, undefined, { numeric: true }) || 
-            a.name.localeCompare(b.name, "th")
-        );
-        return places;
-    } catch (error) {
-        console.error("❌ ดึงข้อมูลสถานที่จาก kbs_place ล้มเหลว:", error);
-        return [];
+                if (places.length > 0) {
+                    places.sort((a, b) => 
+                        a.order - b.order || 
+                        a.id.localeCompare(b.id, undefined, { numeric: true }) || 
+                        a.name.localeCompare(b.name, "th")
+                    );
+                    console.log(`✅ โหลดข้อมูลสถานที่จาก Firestore [${colName}] สำเร็จ ${places.length} รายการ:`, places);
+                    return places;
+                }
+            }
+        } catch (error) {
+            console.warn(`⚠️ ดึงจาก collection '${colName}' ไม่สำเร็จ:`, error.message);
+        }
     }
+
+    console.warn("⚠️ ไม่พบข้อมูลสถานที่ใน Firestore (หรือติด Permission) — ใช้รายการมาตรฐานของโรงเรียนแทน");
+    // Fallback: รายการห้องมาตรฐานของโรงเรียนกาญจนาภิเษกวิทยาลัย กระบี่
+    return [
+        { id: "11018", name: "หอประชุม", capacity: 1500, order: 1 },
+        { id: "11019", name: "โดมราชพฤกษ์", capacity: 3000, order: 2 },
+        { id: "11020", name: "ห้องประชุม Auditorium", capacity: 100, order: 3 },
+        { id: "11021", name: "ห้องประชุมราชพฤกษ์", capacity: 30, order: 4 },
+        { id: "11022", name: "ห้องทูบี (To Be Number One)", capacity: 200, order: 5 },
+        { id: "11023", name: "ห้องประชุมช่อราชพฤกษ์", capacity: 180, order: 6 },
+        { id: "11024", name: "ห้องสมาคมผู้ปกครองและครู", capacity: 30, order: 7 }
+    ];
 }
