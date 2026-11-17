@@ -10,6 +10,7 @@ import {
     where, 
     getDocs,
     setDoc,
+    runTransaction,
     serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
@@ -209,4 +210,37 @@ export async function getKbsPlaces() {
         { id: "11023", name: "ห้องประชุมช่อราชพฤกษ์", capacity: 180, order: 6 },
         { id: "11024", name: "ห้องสมาคมผู้ปกครองและครู", capacity: 30, order: 7 }
     ];
+}
+
+export async function generateWorkOrderId() {
+    const counterRef = doc(db, "counters", "fix_report");
+    const currentThaiYear = new Date().getFullYear() + 543;
+
+    const newWoId = await runTransaction(db, async (transaction) => {
+        const counterSnap = await transaction.get(counterRef);
+        let prefix = "WO";
+        let year = currentThaiYear;
+        let nextCount = 1;
+
+        if (counterSnap.exists()) {
+            const data = counterSnap.data();
+            prefix = data.prefix || "WO";
+            // หากยังเป็นปี พ.ศ. เดิม ให้นับต่อ (+1) ถ้าขึ้นปีใหม่ให้เริ่ม 1 ใหม่
+            if (data.year === currentThaiYear) {
+                nextCount = (Number(data.count) || 0) + 1;
+            }
+        }
+
+        transaction.set(counterRef, {
+            prefix: prefix,
+            year: year,
+            count: nextCount,
+            updated_at: serverTimestamp()
+        }, { merge: true });
+
+        const paddedNumber = String(nextCount).padStart(4, "0");
+        return `${prefix}-${year}-${paddedNumber}`;
+    });
+
+    return newWoId;
 }

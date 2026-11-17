@@ -9,17 +9,19 @@ import {
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-// รายการเมนูทั้งหมดของระบบบริหารทั่วไป (สอดคล้องกับ index.html)
+// รายการเมนูทั้งหมดของระบบบริหารทั่วไป (ตรงกับ data-menu-id ใน index.html)
 const ALL_MENUS = [
     { id: 'kbsroom', name: 'จองห้องประชุม / สถานที่', icon: 'bi-calendar-check-fill' },
+    { id: 'kbsRepair', name: 'แจ้งซ่อม', icon: 'bi-tools' },
+    { id: 'kbsCar', name: 'ขอใช้รถ', icon: 'bi-car-front-fill' },
     { id: 'kbsGmManage', name: 'กำหนดสิทธิการใช้งาน', icon: 'bi-shield-lock-fill' }
 ];
 
 // 🎯 ค่าเริ่มต้น (Default) ของแต่ละ Role เมื่อแอดมินกดเปลี่ยนใน Dropdown
 const DEFAULT_GENERAL_PERMISSIONS = {
-    admin: ['kbsroom', 'kbsGmManage'],
-    officer: ['kbsroom'],
-    staff: ['kbsroom']
+    admin: ['kbsroom', 'kbsRepair', 'kbsCar', 'kbsGmManage'],
+    officer: ['kbsroom', 'kbsRepair', 'kbsCar'],
+    staff: ['kbsroom', 'kbsRepair', 'kbsCar']
 };
 
 let usersCache = [];
@@ -363,6 +365,17 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!initAuthSession()) return;
     loadUsersTable();
 });
+
+function startRolePage() {
+    if (!initAuthSession()) return;
+    loadUsersTable();
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startRolePage);
+} else {
+    startRolePage();
+}
 
 window.loadUsersTable = loadUsersTable;
 window.handleRoleChange = handleRoleChange;
