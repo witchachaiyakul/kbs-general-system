@@ -391,20 +391,24 @@ async function populateRoomOptions() {
       card.setAttribute("role", "button");
       card.setAttribute("aria-label", place.name);
 
-      // รูปภาพห้องประชุม (ช่องสีขาวสำหรับใส่รูปทีหลัง หรือแสดงรูปถ้ามีใน Firestore)
-      const photoHtml = place.photoUrl || place.imageUrl
-        ? `<img src="${place.photoUrl || place.imageUrl}" alt="${place.name}">`
-        : `<div class="room-photo-placeholder">
-             <i class="bi bi-building"></i>
-             <span>รูปภาพห้องประชุม</span>
-           </div>`;
+      // รูปภาพห้องประชุม (ดึงจาก Firestore หรือดึงอัตโนมัติจาก img/rooms/{id}.jpg/.jpeg/.png หากไม่มีจะแสดงช่องสีขาว)
+      const safeId = encodeURIComponent(String(place.id).trim());
+      const photoCandidates = [];
+      if (place.photoUrl || place.imageUrl) {
+        photoCandidates.push(place.photoUrl || place.imageUrl);
+      }
+      photoCandidates.push(
+        `img/rooms/${safeId}.jpg`,
+        `img/rooms/${safeId}.jpeg`,
+        `img/rooms/${safeId}.png`
+      );
 
       const capText = place.capacity ? `รองรับ ${place.capacity} คน` : "ห้องมาตรฐาน";
 
       card.innerHTML = `
         <span class="room-selected-badge"><i class="bi bi-check-circle-fill"></i> เลือกแล้ว <span class="unselect-hint">(กดซ้ำเพื่อยกเลิก)</span></span>
         <div class="room-photo-frame">
-          ${photoHtml}
+          <img src="${photoCandidates[0]}" alt="${place.name}" loading="lazy">
         </div>
         <div class="room-card-info">
           <div class="room-card-title">${place.name}</div>
@@ -414,6 +418,25 @@ async function populateRoomOptions() {
           </div>
         </div>
       `;
+
+      const photoFrame = card.querySelector(".room-photo-frame");
+      const photoImg = photoFrame ? photoFrame.querySelector("img") : null;
+      if (photoImg) {
+        let candidateIdx = 0;
+        photoImg.addEventListener("error", () => {
+          candidateIdx += 1;
+          if (candidateIdx < photoCandidates.length) {
+            photoImg.src = photoCandidates[candidateIdx];
+          } else if (photoFrame) {
+            photoFrame.innerHTML = `
+              <div class="room-photo-placeholder">
+                <i class="bi bi-building"></i>
+                <span>รูปภาพห้องประชุม</span>
+              </div>
+            `;
+          }
+        });
+      }
 
       card.addEventListener("click", () => {
         selectRoom(place);

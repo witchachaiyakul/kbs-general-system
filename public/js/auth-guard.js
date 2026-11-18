@@ -68,6 +68,22 @@ if (IS_DEV_MODE) {
       expiresAt: Date.now() + 8 * 60 * 60 * 1000
     };
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(devUserSession));
+  } else {
+    console.warn("⚠️ [Auth Guard] DEV MODE: ไม่พบข้อมูลใน Firestore หรือเชื่อมต่อไม่ได้ — ใช้บัญชีทดสอบสำรอง (Admin)");
+    const fallbackDevSession = {
+      docId: "dev_local",
+      id: DEV_LINE_USER_ID,
+      line_user_id: DEV_LINE_USER_ID,
+      name: "ผู้ดูแลระบบ (DEV MODE)",
+      pos: "ผู้ดูแลระบบ",
+      position: "ผู้ดูแลระบบ",
+      picture: "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+      role: "admin",
+      general_permission: ["kbsroom", "kbsGmManage", "kbsRepair"],
+      status: "done",
+      expiresAt: Date.now() + 8 * 60 * 60 * 1000
+    };
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(fallbackDevSession));
   }
 } else {
   // ============================================================================
