@@ -5,7 +5,7 @@ import { getCommitteeByLineId } from "./firestore.js";
 // ⚙️ CONFIGURATION
 // ============================================================================
 const IS_DEV_MODE = true; // 🎯 ปิดเมื่อทดสอบรวมระบบผ่าน kbs-main
-const DEV_LINE_USER_ID = "Ub2e3668590bc8ecffcc3202fed8307cb";
+const DEV_LINE_USER_ID = "Uee9e25daa4093ff804637d5c55c6be03";
 
 const isLocal = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 const MAIN_PORTAL_URL = isLocal ? "../index.html" : "https://kbs-gm.web.app/";

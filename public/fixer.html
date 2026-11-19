@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0d233a">
+    <title>ซ่อม - โรงเรียนกาญจนาภิเษกวิทยาลัย กระบี่</title>
+
+    <!-- Bootstrap 5, Bootstrap Icons, Google Fonts Sarabun -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <!-- Custom Main CSS -->
+    <link rel="stylesheet" href="./css/main.css">
+    <script type="module" src="./js/auth-guard.js"></script>
+  </head>
+  <body class="bg-light">
+
+    <!-- Navbar มาตรฐาน -->
+    <nav class="navbar navbar-expand-lg navbar-dark shadow-sm mb-4" style="background-color: var(--navy-dark, #0d233a); border-bottom: 2px solid var(--gold-accent, #ffc107);">
+      <div class="container-fluid d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center">
+          <span class="navbar-brand mb-0 h1 text-white me-2">
+            <i class="bi bi-wrench-adjustable-circle-fill me-2" style="color: var(--gold-accent, #ffc107);"></i>งานแจ้งซ่อม
+          </span>
+        </div>
+
+        <!-- โปรไฟล์ผู้ใช้งาน -->
+        <div class="d-flex align-items-center text-white" id="userHeaderProfile">
+          <img id="headerUserImg" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Profile" class="rounded-circle me-2" style="width: 38px; height: 38px; object-fit: cover; border: 2px solid var(--gold-accent, #ffc107);">
+          <div class="me-3 text-end">
+            <div class="fw-bold small" id="headerUserName">Loading...</div>
+            <small class="text-white-50 d-block" style="font-size: 11px;" id="headerUserPosition">ตำแหน่ง: -</small>
+            <span class="badge bg-info text-dark" style="font-size: 10px;" id="headerUserRole">Role: -</span>
+          </div>
+          <a href="index.html" class="btn btn-outline-light btn-sm rounded-3">
+            <i class="bi bi-house-door me-1"></i> หน้าหลัก
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="container pb-5">
+
+      <!-- ปุ่มรีเฟรชงาน -->
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold text-navy mb-0">
+          <i class="bi bi-list-check me-2 text-primary"></i>รายการแจ้งซ่อม
+        </h5>
+        <button type="button" id="btnRefreshFixer" class="btn btn-outline-primary btn-sm fw-semibold px-3">
+          <i class="bi bi-arrow-clockwise me-1"></i> รีเฟรชงาน
+        </button>
+      </div>
+
+      <!-- รายการใบงานซ่อม (แสดงแบบการ์ดเพื่ออ่าน Comment และดูหน้างานสะดวกบนมือถือ) -->
+      <div id="fixerJobsContainer" class="row g-3">
+        <div class="col-12 text-center text-muted py-5">
+          <div class="spinner-border text-primary mb-2" role="status"></div>
+          <div>กำลังโหลดรายการงานซ่อมของคุณ...</div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- ====================================================================== -->
+    <!-- Modal บันทึกผลการประเมิน / ปิดงานซ่อม (บังคับแนบรูปยืนยัน 2 รูป) -->
+    <!-- ====================================================================== -->
+    <div class="modal fade" id="fixerActionModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+          <div class="modal-header text-white" style="background-color: var(--navy-dark, #0d233a);">
+            <h5 class="modal-title fw-bold">
+              <i class="bi bi-tools me-2 text-warning"></i>บันทึกผลการซ่อม / ประเมินหน้างาน (<span id="fixerModalWoId">-</span>)
+            </h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+
+          <form id="fixerActionForm">
+            <div class="modal-body">
+              <input type="hidden" id="fixerWorkWoId">
+
+              <!-- ข้อมูลใบงาน + คำสั่งจาก Admin -->
+              <div class="p-3 rounded bg-light border mb-3 small">
+                <div class="mb-1"><strong>สถานที่:</strong> <span id="fixerModalLocation" class="text-dark">-</span></div>
+                <div class="mb-1"><strong>อาการที่แจ้ง:</strong> <span id="fixerModalDetail" class="text-secondary">-</span></div>
+                <div><strong>ผู้แจ้งซ่อม:</strong> <span id="fixerModalReporter">-</span></div>
+                <div id="fixerModalAdminNoteBox" class="alert alert-warning py-2 px-3 mt-2 mb-0 d-none">
+                  <i class="bi bi-chat-square-quote-fill me-1"></i><strong>คำสั่งจากผู้ดูแล:</strong>
+                  <span id="fixerModalAdminNoteText"></span>
+                </div>
+              </div>
+
+              <!-- 1. ผลการดำเนินการ -->
+              <div class="mb-3">
+                <label class="form-label fw-bold">1. ผลการตรวจสอบและซ่อมแซม <span class="text-danger">*</span></label>
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <div class="form-check border rounded p-3 h-100 bg-success bg-opacity-10 border-success">
+                      <input class="form-check-input ms-0 me-2" type="radio" name="repairOutcome" id="outcomeDone" value="done" checked>
+                      <label class="form-check-label fw-bold text-success" for="outcomeDone">
+                        <i class="bi bi-check-circle-fill me-1"></i> ซ่อมได้ / ดำเนินการเสร็จสิ้น
+                      </label>
+                      <div class="small text-muted mt-1">แก้ไขเรียบร้อย ใช้งานได้ตามปกติ</div>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-check border rounded p-3 h-100 bg-danger bg-opacity-10 border-danger">
+                      <input class="form-check-input ms-0 me-2" type="radio" name="repairOutcome" id="outcomeEscalated" value="escalated">
+                      <label class="form-check-label fw-bold text-danger" for="outcomeEscalated">
+                        <i class="bi bi-exclamation-octagon-fill me-1"></i> ซ่อมไม่ได้ / ส่งต่อผู้เชี่ยวชาญ
+                      </label>
+                      <div class="small text-muted mt-1">เกินขีดความสามารถ หรือต้องจัดซื้ออะไหล่/จ้างช่างภายนอก</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. รายละเอียดการซ่อม / สาเหตุที่ส่งต่อ -->
+              <div class="mb-3">
+                <label for="fixerNoteInput" class="form-label fw-bold">
+                  2. รายละเอียดการซ่อม / ผลการประเมินหน้างาน <span class="text-danger">*</span>
+                </label>
+                <textarea id="fixerNoteInput" class="form-control" rows="3" required
+                  placeholder="ระบุสิ่งที่ดำเนินการแก้ไข อะไหล่ที่ใช้ หรือสาเหตุที่ต้องส่งต่อช่างผู้เชี่ยวชาญ..."></textarea>
+              </div>
+
+              <!-- 3. แนบรูปถ่ายยืนยัน 2 รูป -->
+              <div class="mb-3">
+                <label for="fixerProofImages" class="form-label fw-bold">
+                  3. แนบรูปถ่ายยืนยันผลการปฏิบัติงาน (บังคับ 2 รูป) <span class="text-danger">*</span>
+                </label>
+                <input type="file" id="fixerProofImages" class="form-control" accept="image/*" multiple>
+                <div class="form-text text-primary">
+                  <i class="bi bi-camera-fill me-1"></i>กรุณาเลือกรูปภาพจำนวน <strong>2 รูป</strong> (เช่น ภาพจุดที่ซ่อมเสร็จแล้ว หรือภาพสภาพความเสียหายหน้างาน)
+                </div>
+
+                <!-- แสดงตัวอย่างรูป 2 รูป -->
+                <div id="fixerPreviewGrid" class="row g-2 mt-2"></div>
+              </div>
+
+              <!-- ประวัติ Comment ทั้งหมด -->
+              <div>
+                <label class="form-label fw-semibold small text-muted mb-1">ประวัติการสื่อสารในใบงานนี้</label>
+                <div id="fixerCommentHistory" class="border rounded p-2 bg-light small" style="max-height: 130px; overflow-y: auto;">
+                  <span class="text-muted">ยังไม่มีประวัติ Comment</span>
+                </div>
+              </div>
+
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+              <button type="submit" id="btnSubmitFixerWork" class="btn btn-success fw-bold px-4" disabled>
+                <i class="bi bi-check2-circle me-1"></i> ยืนยันส่งผลการซ่อม
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module" src="./js/fixer.js"></script>
+  </body>
+</html>

@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0d233a">
+    <title>บริหารจัดการงานแจ้งซ่อม - โรงเรียนกาญจนาภิเษกวิทยาลัย กระบี่</title>
+
+    <!-- Bootstrap 5, Bootstrap Icons, Google Fonts Sarabun -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <!-- Custom Main CSS -->
+    <link rel="stylesheet" href="./css/main.css">
+    <script type="module" src="./js/auth-guard.js"></script>
+  </head>
+  <body class="bg-light">
+
+    <!-- Navbar มาตรฐาน -->
+    <nav class="navbar navbar-expand-lg navbar-dark shadow-sm mb-4" style="background-color: var(--navy-dark, #0d233a); border-bottom: 2px solid var(--gold-accent, #ffc107);">
+      <div class="container-fluid d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center">
+          <span class="navbar-brand mb-0 h1 text-white me-2">
+            <i class="bi bi-clipboard2-check-fill me-2" style="color: var(--gold-accent, #ffc107);"></i>บริหารจัดการงานแจ้งซ่อม
+          </span>
+        </div>
+
+        <!-- โปรไฟล์ผู้ใช้งาน -->
+        <div class="d-flex align-items-center text-white" id="userHeaderProfile">
+          <img id="headerUserImg" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Profile" class="rounded-circle me-2" style="width: 38px; height: 38px; object-fit: cover; border: 2px solid var(--gold-accent, #ffc107);">
+          <div class="me-3 text-end">
+            <div class="fw-bold small" id="headerUserName">Loading...</div>
+            <small class="text-white-50 d-block" style="font-size: 11px;" id="headerUserPosition">ตำแหน่ง: -</small>
+            <span class="badge bg-info text-dark" style="font-size: 10px;" id="headerUserRole">Role: -</span>
+          </div>
+          <a href="index.html" class="btn btn-outline-light btn-sm rounded-3">
+            <i class="bi bi-house-door me-1"></i> หน้าหลัก
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="container-fluid px-3 px-md-4 pb-5">
+
+      <!-- การ์ดสรุปสถานะงานซ่อม -->
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-4 col-xl-2">
+          <div class="card border-0 shadow-sm h-100 border-start border-4 border-primary">
+            <div class="card-body py-3">
+              <div class="text-muted small">รายการทั้งหมด</div>
+              <div class="fs-4 fw-bold text-primary" id="stat-total">0</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+          <div class="card border-0 shadow-sm h-100 border-start border-4 border-warning">
+            <div class="card-body py-3">
+              <div class="text-muted small">รอรับเรื่อง / จ่ายงาน</div>
+              <div class="fs-4 fw-bold text-warning" id="stat-pending">0</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+          <div class="card border-0 shadow-sm h-100 border-start border-4 border-info">
+            <div class="card-body py-3">
+              <div class="text-muted small">กำลังดำเนินการ</div>
+              <div class="fs-4 fw-bold text-info" id="stat-assigned">0</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+          <div class="card border-0 shadow-sm h-100 border-start border-4 border-danger">
+            <div class="card-body py-3">
+              <div class="text-muted small">ส่งต่อผู้เชี่ยวชาญ</div>
+              <div class="fs-4 fw-bold text-danger" id="stat-escalated">0</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+          <div class="card border-0 shadow-sm h-100 border-start border-4 border-success">
+            <div class="card-body py-3">
+              <div class="text-muted small">ซ่อมเสร็จสิ้น</div>
+              <div class="fs-4 fw-bold text-success" id="stat-done">0</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl-2">
+          <div class="card border-0 shadow-sm h-100 border-start border-4 border-secondary">
+            <div class="card-body py-3">
+              <div class="text-muted small">ยกเลิกรายการ</div>
+              <div class="fs-4 fw-bold text-secondary" id="stat-cancelled">0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- แผงควบคุมการค้นหาและตารางรายการ -->
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white py-3">
+          <div class="row g-2 align-items-center">
+            <div class="col-12 col-lg-4">
+              <h5 class="mb-0 fw-bold text-navy">
+                <i class="bi bi-list-task me-2 text-primary"></i>รายการแจ้งซ่อมทั้งหมด
+              </h5>
+            </div>
+            <div class="col-12 col-md-5 col-lg-4">
+              <div class="input-group input-group-sm">
+                <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
+                <input type="text" id="searchInput" class="form-control" placeholder="ค้นหาเลข WO, สถานที่, อาการ หรือชื่อผู้แจ้ง...">
+              </div>
+            </div>
+            <div class="col-8 col-md-4 col-lg-2">
+              <select id="statusFilter" class="form-select form-select-sm">
+                <option value="all">ทุกสถานะ</option>
+                <option value="pending">🟡 รอรับเรื่อง / จ่ายงาน</option>
+                <option value="assigned">🔵 กำลังดำเนินการ</option>
+                <option value="escalated">🔴 ส่งต่อผู้เชี่ยวชาญ</option>
+                <option value="done">🟢 ซ่อมเสร็จสิ้น</option>
+                <option value="cancelled">⚪ ยกเลิก</option>
+              </select>
+            </div>
+            <div class="col-4 col-md-3 col-lg-2 text-end">
+              <button type="button" id="btnRefreshAdmin" class="btn btn-outline-primary btn-sm w-100 fw-semibold">
+                <i class="bi bi-arrow-clockwise me-1"></i> โหลดใหม่
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light small">
+                <tr>
+                  <th style="width: 12%;">เลขที่ WO / วันที่</th>
+                  <th style="width: 17%;">ผู้แจ้งซ่อม</th>
+                  <th style="width: 22%;">สถานที่ / อาการชำรุด</th>
+                  <th style="width: 11%;">หลักฐานภาพ</th>
+                  <th style="width: 18%;">ช่างผู้รับผิดชอบ / Comment</th>
+                  <th style="width: 10%;">สถานะ</th>
+                  <th style="width: 10%;" class="text-center">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody id="adminFixTableBody">
+                <tr>
+                  <td colspan="7" class="text-center text-muted py-5">
+                    <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                    กำลังโหลดรายการแจ้งซ่อม...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ====================================================================== -->
+    <!-- Modal 1: จ่ายงานไปยังช่าง (fixer) และส่ง Comment / เปลี่ยนสถานะ -->
+    <!-- ====================================================================== -->
+    <div class="modal fade" id="assignWorkModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+          <div class="modal-header text-white" style="background-color: var(--navy-dark, #0d233a);">
+            <h5 class="modal-title fw-bold">
+              <i class="bi bi-person-gear me-2 text-warning"></i>จัดการใบงาน & สั่งงานช่าง (<span id="modalWoId">-</span>)
+            </h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="assignWorkForm">
+            <div class="modal-body">
+              <input type="hidden" id="editWoId">
+
+              <!-- สรุปรายละเอียดใบแจ้งซ่อม -->
+              <div class="p-3 rounded bg-light border mb-3 small">
+                <div class="row g-2">
+                  <div class="col-md-6"><strong>ผู้แจ้งซ่อม:</strong> <span id="modalReporterInfo">-</span></div>
+                  <div class="col-md-6"><strong>สถานที่:</strong> <span id="modalLocation">-</span></div>
+                  <div class="col-12"><strong>รายละเอียดอาการ:</strong> <span id="modalDetail">-</span></div>
+                </div>
+              </div>
+
+              <div class="row g-3">
+                <!-- เลือกช่างผู้รับผิดชอบ (สำหรับหน้า fixer.html) -->
+                <div class="col-md-7">
+                  <label for="selectFixer" class="form-label fw-semibold">
+                    มอบหมายช่างผู้รับผิดชอบ (ส่งไปยังหน้า Fixer)
+                  </label>
+                  <select id="selectFixer" class="form-select">
+                    <option value="">-- ยังไม่ระบุช่างผู้รับผิดชอบ --</option>
+                  </select>
+                  <div class="form-text">ระบบแสดงรายชื่อผู้ที่มีสิทธิ์งานช่าง (kbsFixer) หรือบุคลากรในระบบ</div>
+                </div>
+
+                <!-- ปรับสถานะใบงาน -->
+                <div class="col-md-5">
+                  <label for="selectWorkStatus" class="form-label fw-semibold">สถานะใบงาน</label>
+                  <select id="selectWorkStatus" class="form-select fw-semibold">
+                    <option value="pending">🟡 รอรับเรื่อง / จ่ายงาน (pending)</option>
+                    <option value="assigned">🔵 กำลังดำเนินการ (assigned)</option>
+                    <option value="escalated">🔴 ส่งต่อช่างผู้เชี่ยวชาญ (escalated)</option>
+                    <option value="done">🟢 ซ่อมเสร็จสิ้น (done)</option>
+                    <option value="cancelled">⚪ ยกเลิกรายการ (cancelled)</option>
+                  </select>
+                </div>
+
+                <!-- ช่อง Comment / คำสั่งงานไปยังช่าง -->
+                <div class="col-12">
+                  <label for="adminCommentInput" class="form-label fw-semibold">
+                    <i class="bi bi-chat-left-text me-1 text-primary"></i>Comment / คำสั่งงานถึงช่าง (แสดงในหน้า fixer.html)
+                  </label>
+                  <textarea id="adminCommentInput" class="form-control" rows="3" placeholder="ระบุคำแนะนำหน้างาน จุดที่ต้องระวัง หรืออะไหล่ที่ให้ตรวจสอบ..."></textarea>
+                </div>
+
+                <!-- ข้อความแจ้งกลับผู้แจ้งซ่อม (ถ้ามี) -->
+                <div class="col-12">
+                  <label for="reporterFeedbackInput" class="form-label fw-semibold">
+                    <i class="bi bi-megaphone me-1 text-success"></i>หมายเหตุแจ้งผู้แจ้งซ่อม (ไม่บังคับ)
+                  </label>
+                  <input type="text" id="reporterFeedbackInput" class="form-control" placeholder="เช่น รับเรื่องแล้ว ช่างจะเข้าตรวจสอบช่วงบ่ายวันนี้">
+                </div>
+
+                <!-- ประวัติ Comment ทั้งหมดของใบงานนี้ -->
+                <div class="col-12">
+                  <label class="form-label fw-semibold small text-muted mb-1">ประวัติการสื่อสาร / Comment ของใบงาน</label>
+                  <div id="commentHistoryBox" class="border rounded p-2 bg-light small" style="max-height: 150px; overflow-y: auto;">
+                    <span class="text-muted">ยังไม่มีประวัติ Comment</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+              <button type="submit" id="btnSaveWorkOrder" class="btn btn-primary fw-bold px-4">
+                <i class="bi bi-save me-1"></i> บันทึกและส่งงานช่าง
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="module" src="./js/fix-admin.js"></script>
+  </body>
+</html>
