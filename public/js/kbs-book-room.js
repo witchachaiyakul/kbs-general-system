@@ -180,15 +180,22 @@ function createStatus(status) {
 function getPlaceEquipmentList(place) {
   if (!place) return [];
 
+  // ค้นหาฟิลด์ equipment หรือ facilities แบบยืดหยุ่น (ตัดช่องว่างเว้นวรรค เช่น "equipment ")
+  let equipData = place.equipment || place.facilities;
+  if (!equipData) {
+    const matchedKey = Object.keys(place).find((k) => {
+      const clean = k.trim().toLowerCase();
+      return clean === "equipment" || clean === "facilities";
+    });
+    if (matchedKey) equipData = place[matchedKey];
+  }
+
   // 1. ถ้ามีฟิลด์ equipment ใน Firestore
-  if (Array.isArray(place.equipment) && place.equipment.length > 0) {
-    return place.equipment;
+  if (Array.isArray(equipData) && equipData.length > 0) {
+    return equipData;
   }
-  if (typeof place.equipment === "string" && place.equipment.trim()) {
-    return place.equipment.split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
-  }
-  if (Array.isArray(place.facilities) && place.facilities.length > 0) {
-    return place.facilities;
+  if (typeof equipData === "string" && equipData.trim()) {
+    return equipData.split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
   }
 
   // 2. ข้อมูลอุปกรณ์เริ่มต้นตามประเภท/ชื่อห้องของโรงเรียนกาญจนาภิเษกวิทยาลัย กระบี่
@@ -199,14 +206,17 @@ function getPlaceEquipmentList(place) {
   if (name.includes("หอประชุม")) {
     return ["เวทีการแสดงขนาดใหญ่", "ระบบเครื่องเสียงหอประชุม", "ไมโครโฟน 4 ตัว", "Projector พร้อมจอภาพ", "ไฟสปอตไลท์"];
   }
-  if (name.includes("โดม") || name.includes("ราชพฤกษ์")) {
+  if (name.includes("ช่อราชพฤกษ์")) {
+    return ["Projector พร้อมจอภาพ", "เครื่องเสียง", "ไมโครโฟน 2 ตัว", "เครื่องปรับอากาศ"];
+  }
+  if (name.includes("โดม")) {
     return ["ลานกิจกรรมอเนกประสงค์", "เวทีกิจกรรม", "ระบบเครื่องเสียงกลางแจ้ง", "ไมโครโฟนไร้สาย 2 ตัว"];
+  }
+  if (name.includes("ราชพฤกษ์")) {
+    return ["Projector พร้อมจอภาพ", "เครื่องเสียงห้องประชุม", "ไมโครโฟน 2 ตัว", "เครื่องปรับอากาศ"];
   }
   if (name.includes("ทูบี") || name.includes("to be")) {
     return ["เวทีกิจกรรม", "เครื่องเสียง", "ไมโครโฟน", "เครื่องปรับอากาศ"];
-  }
-  if (name.includes("ช่อราชพฤกษ์")) {
-    return ["Projector พร้อมจอภาพ", "เครื่องเสียง", "ไมโครโฟน 2 ตัว", "เครื่องปรับอากาศ"];
   }
   if (name.includes("สมาคม") || name.includes("ผู้ปกครอง")) {
     return ["โต๊ะประชุม", "เครื่องปรับอากาศ", "กระดานไวท์บอร์ด", "ไมโครโฟน"];
@@ -279,6 +289,8 @@ function renderRoomFacilities(placeId) {
 // ==========================================
 // 🏢 ระบบการเลือกห้องประชุมแบบการ์ด (Grid) & แสดงรายละเอียด
 // ==========================================
+let currentSelectedPlace = null;
+
 function selectRoom(place) {
   if (!place) return;
 
@@ -289,6 +301,8 @@ function selectRoom(place) {
     resetRoomSelection(true);
     return;
   }
+
+  currentSelectedPlace = place;
 
   if (locationInput) {
     locationInput.value = place.id;
@@ -316,7 +330,12 @@ function selectRoom(place) {
   const currentRoomCap = document.getElementById("current-room-capacity");
   if (currentRoomName) currentRoomName.textContent = place.name;
   if (currentRoomCap) {
-    currentRoomCap.textContent = place.capacity ? `รองรับ ${place.capacity} คน` : "ห้องมาตรฐาน";
+    if (place.capacity) {
+      currentRoomCap.textContent = `รองรับ ${place.capacity} คน`;
+      currentRoomCap.classList.remove("d-none");
+    } else {
+      currentRoomCap.classList.add("d-none");
+    }
   }
 
   // อัปเดตรายการอุปกรณ์ประจำห้อง
@@ -331,6 +350,7 @@ function selectRoom(place) {
 }
 
 function resetRoomSelection(scrollBack = true) {
+  currentSelectedPlace = null;
   const locationInput = document.getElementById("location");
   if (locationInput) locationInput.value = "";
 
@@ -352,6 +372,136 @@ function resetRoomSelection(scrollBack = true) {
       roomGrid.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
+}
+
+// ==========================================
+// 🖼️ ระบบป๊อปอัปดูรูปภาพภายในห้องประชุม (3 รูป)
+// ==========================================
+function openPhotoLightbox(src, title) {
+  const lbModalElem = document.getElementById("photoLightboxModal");
+  if (!lbModalElem || !window.bootstrap) return;
+  const lbImg = document.getElementById("lightboxImg");
+  const lbTitle = document.getElementById("lightboxTitle");
+  if (lbImg) lbImg.src = src;
+  if (lbTitle) {
+    lbTitle.innerHTML = `<i class="bi bi-image text-warning me-1"></i> ${title || "ภาพบรรยากาศ"}`;
+  }
+  const bsLightbox = window.bootstrap.Modal.getOrCreateInstance(lbModalElem);
+  bsLightbox.show();
+}
+
+function showRoomPhotosModal(place) {
+  if (!place) return;
+
+  const modalElem = document.getElementById("roomPhotosModal");
+  if (!modalElem || !window.bootstrap) return;
+
+  const nameElem = document.getElementById("modalRoomName");
+  const capElem = document.getElementById("modalRoomCapBadge");
+  const grid = document.getElementById("modalPhotosGrid");
+
+  if (nameElem) nameElem.textContent = place.name || "ห้องประชุม";
+  if (capElem) {
+    capElem.textContent = place.capacity ? `รองรับ ${place.capacity} คน` : "ห้องมาตรฐาน";
+  }
+
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  const safeId = encodeURIComponent(String(place.id).trim());
+
+  // กำหนด 3 รูปภาพภายในห้องประชุม (ไม่นับรวมรูปภาพหน้าปกของการ์ดห้อง)
+  const slots = [
+    {
+      title: "รูปภายในห้องที่ 1",
+      candidates: [
+        `img/rooms/${safeId}_1.jpg`,
+        `img/rooms/${safeId}_1.jpeg`,
+        `img/rooms/${safeId}_1.png`
+      ]
+    },
+    {
+      title: "รูปภายในห้องที่ 2",
+      candidates: [
+        `img/rooms/${safeId}_2.jpg`,
+        `img/rooms/${safeId}_2.jpeg`,
+        `img/rooms/${safeId}_2.png`
+      ]
+    },
+    {
+      title: "รูปภายในห้องที่ 3",
+      candidates: [
+        `img/rooms/${safeId}_3.jpg`,
+        `img/rooms/${safeId}_3.jpeg`,
+        `img/rooms/${safeId}_3.png`
+      ]
+    }
+  ];
+
+  // ถ้าใน Firestore มี array interior_photos หรือ gallery ให้ดึงมาใช้แทน/เสริม
+  const customList = Array.isArray(place.interior_photos)
+    ? place.interior_photos
+    : (Array.isArray(place.gallery) ? place.gallery : null);
+  if (customList && customList.length > 0) {
+    customList.forEach((url, i) => {
+      if (slots[i] && url) {
+        slots[i].candidates.unshift(url);
+      }
+    });
+  }
+
+  slots.forEach((slot, idx) => {
+    const col = document.createElement("div");
+    col.className = "col-md-4 col-12";
+
+    const card = document.createElement("div");
+    card.className = "modal-photo-card";
+
+    const frame = document.createElement("div");
+    frame.className = "modal-photo-frame";
+    frame.title = "คลิกเพื่อดูรูปภาพขนาดใหญ่";
+
+    const img = document.createElement("img");
+    img.alt = slot.title;
+    img.loading = "lazy";
+
+    let cIdx = 0;
+    img.src = slot.candidates[cIdx];
+
+    img.addEventListener("error", () => {
+      cIdx += 1;
+      if (cIdx < slot.candidates.length) {
+        img.src = slot.candidates[cIdx];
+      } else {
+        frame.innerHTML = `
+          <div class="modal-photo-placeholder">
+            <i class="bi bi-camera"></i>
+            <div class="fw-bold small text-white">รูปภายในห้องที่ ${idx + 1}</div>
+            <div style="font-size: 0.74rem; color: #94a3b8; margin-top: 5px;">
+              ยังไม่มีรูปภาพ<br>
+              <span class="text-gold">(ตั้งชื่อ: ${safeId}_${idx + 1}.jpg)</span>
+            </div>
+          </div>
+        `;
+        frame.style.cursor = "default";
+      }
+    });
+
+    frame.appendChild(img);
+    frame.addEventListener("click", () => {
+      const activeImg = frame.querySelector("img");
+      if (activeImg && activeImg.src && !activeImg.src.endsWith("undefined")) {
+        openPhotoLightbox(activeImg.src, `${place.name} - รูปที่ ${idx + 1}`);
+      }
+    });
+
+    card.appendChild(frame);
+    col.appendChild(card);
+    grid.appendChild(col);
+  });
+
+  const bsModal = window.bootstrap.Modal.getOrCreateInstance(modalElem);
+  bsModal.show();
 }
 
 async function populateRoomOptions() {
@@ -451,6 +601,19 @@ async function populateRoomOptions() {
 
       roomGrid.appendChild(card);
     });
+
+    // ผูกปุ่มดูรูปภาพภายในห้องประชุม (View Room Photos Modal)
+    const btnPhotos = document.getElementById("btn-view-room-photos");
+    if (btnPhotos && !btnPhotos.dataset.bound) {
+      btnPhotos.dataset.bound = "true";
+      btnPhotos.addEventListener("click", () => {
+        if (currentSelectedPlace) {
+          showRoomPhotosModal(currentSelectedPlace);
+        } else {
+          alert("กรุณาเลือกห้องประชุมก่อนกดดูรูปภาพ");
+        }
+      });
+    }
 
     // ผูกปุ่มเปลี่ยนห้อง (Change Room)
     const btnChange = document.getElementById("btn-change-room");
