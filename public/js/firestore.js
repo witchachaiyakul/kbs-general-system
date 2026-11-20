@@ -244,3 +244,53 @@ export async function generateWorkOrderId() {
 
     return newWoId;
 }
+
+/**
+ * 🏛️ ออกเลขที่คำขอจองห้องประชุมตามระเบียบงานสารบรรณ/ระบบราชการ
+ * รูปแบบ: BR-2569/0001 (รีเซ็ตนับ 1 ใหม่ทุกปี พ.ศ.)
+ */
+export async function generateBookingNumber() {
+    const counterRef = doc(db, "counters", "room_booking");
+    const currentThaiYear = new Date().getFullYear() + 543;
+
+    try {
+        const newBookingNo = await runTransaction(db, async (transaction) => {
+            const counterSnap = await transaction.get(counterRef);
+            let prefix = "BR";
+            let year = currentThaiYear;
+            let nextCount = 1;
+
+            if (counterSnap.exists()) {
+                const data = counterSnap.data();
+                prefix = data.prefix || "BR";
+                // หากยังเป็นปี พ.ศ. เดียวกัน ให้นับต่อ (+1) ถ้าขึ้นปีใหม่ให้เริ่ม 1 ใหม่
+                if (data.year === currentThaiYear) {
+                    nextCount = (Number(data.count || data.lastNumber) || 0) + 1;
+                }
+            }
+
+            transaction.set(counterRef, {
+                prefix: prefix,
+                year: year,
+                count: nextCount,
+                updated_at: serverTimestamp()
+            }, { merge: true });
+
+            const paddedNumber = String(nextCount).padStart(4, "0");
+            return `${prefix}-${year}/${paddedNumber}`;
+        });
+
+        return newBookingNo;
+    } catch (err) {
+        console.warn("⚠️ ไม่สามารถรัน transaction บน counters/room_booking ได้ ใช้การนับจาก publicBookings สำรอง:", err);
+        try {
+            const snap = await getDocs(collection(db, "publicBookings"));
+            const nextCount = snap.size + 1;
+            const padded = String(nextCount).padStart(4, "0");
+            return `BR-${currentThaiYear}/${padded}`;
+        } catch (e) {
+            const rand = String(Math.floor(1 + Math.random() * 9999)).padStart(4, "0");
+            return `BR-${currentThaiYear}/${rand}`;
+        }
+    }
+}

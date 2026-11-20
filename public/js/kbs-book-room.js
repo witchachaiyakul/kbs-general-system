@@ -1,6 +1,6 @@
 // public/js/kbs-book-room.js
 import "./auth-guard.js";
-import { db, getCommitteeByLineId, getKbsPlaces, insertAuditLog } from "./firestore.js";
+import { db, generateBookingNumber, getCommitteeByLineId, getKbsPlaces, insertAuditLog } from "./firestore.js";
 import {
   Timestamp,
   collection,
@@ -679,7 +679,7 @@ function renderPublicBookings() {
   if (visible.length === 0) {
     const row = publicBookingsBody.insertRow();
     const cell = row.insertCell();
-    cell.colSpan = 5;
+    cell.colSpan = 6;
     cell.className = "text-center text-muted py-4";
     cell.textContent = "ไม่พบรายการจองในช่วงเวลาที่เลือก";
     return;
@@ -687,7 +687,17 @@ function renderPublicBookings() {
 
   visible.forEach((booking) => {
     const row = publicBookingsBody.insertRow();
+    
+    // เลขที่จอง (เช่น BR-2569/0001) หน้าชื่อผู้จอง
+    const noCell = document.createElement("td");
+    if (booking.bookingNo) {
+      noCell.innerHTML = `<span class="badge" style="background: rgba(0, 212, 255, 0.12); color: #00d4ff; border: 1px solid rgba(0, 212, 255, 0.35); font-family: monospace; font-size: 0.88rem; padding: 0.35em 0.6em; font-weight: 600; letter-spacing: 0.5px;">${booking.bookingNo}</span>`;
+    } else {
+      noCell.innerHTML = `<span style="color: var(--kbs-text-secondary);">-</span>`;
+    }
+
     row.append(
+      noCell,
       createCell(booking.fullName),
       createCell(booking.location),
       createCell(displayDate(booking.startTime)),
@@ -699,7 +709,7 @@ function renderPublicBookings() {
 }
 
 async function loadPublicBookings() {
-  publicBookingsBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">กำลังโหลดข้อมูล...</td></tr>';
+  publicBookingsBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">กำลังโหลดข้อมูล...</td></tr>';
   try {
     const result = await getDocs(query(
       collection(db, "publicBookings"),
@@ -710,7 +720,7 @@ async function loadPublicBookings() {
     renderPublicBookings();
   } catch (error) {
     showMessage(appMessage, `โหลดรายการจองไม่สำเร็จ: ${error.message}`, true);
-    publicBookingsBody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">ไม่สามารถโหลดข้อมูลได้</td></tr>';
+    publicBookingsBody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">ไม่สามารถโหลดข้อมูลได้</td></tr>';
   }
 }
 
@@ -798,14 +808,23 @@ async function submitBooking(event) {
       throw new Error("สถานที่มีรายการจองที่ทับซ้อนกัน กรุณาเลือกวันหรือเวลาใหม่");
     }
 
+    // 🏛️ ออกเลขที่คำขอจองห้องประชุมตามระเบียบสารบรรณ (เช่น BR-2569/0001)
+    const bookingNo = await generateBookingNumber();
+
     const batch = writeBatch(db);
     const bookingRef = doc(collection(db, "bookings"));
     const publicBookingRef = doc(db, "publicBookings", bookingRef.id);
     const createdAt = serverTimestamp();
 
-    batch.set(bookingRef, { ...booking, createdAt, updatedAt: createdAt });
+    batch.set(bookingRef, {
+      ...booking,
+      bookingNo,
+      createdAt,
+      updatedAt: createdAt
+    });
     batch.set(publicBookingRef, {
       bookingId: bookingRef.id,
+      bookingNo,
       fullName: booking.fullName,
       pos: booking.pos,
       placeId: booking.placeId,
@@ -819,12 +838,12 @@ async function submitBooking(event) {
     await batch.commit();
 
     if (typeof insertAuditLog === "function" && currentUser) {
-      await insertAuditLog("BOOK_ROOM", `ขอจอง ${booking.location} (${booking.purpose})`, currentUser);
+      await insertAuditLog("BOOK_ROOM", `ขอจอง ${booking.location} (${booking.purpose}) เลขที่ ${bookingNo}`, currentUser);
     }
 
     form.reset();
     resetRoomSelection();
-    showMessage(appMessage, "ส่งคำขอจองเรียบร้อยแล้ว กรุณารอผู้ดูแลอนุมัติ", false);
+    showMessage(appMessage, `ส่งคำขอจองเรียบร้อยแล้ว (เลขที่: ${bookingNo}) กรุณารอผู้ดูแลอนุมัติ`, false);
     await loadPublicBookings();
   } catch (error) {
     showMessage(appMessage, `ส่งคำขอไม่สำเร็จ: ${error.message}`, true);
@@ -841,7 +860,7 @@ function renderAdminBookings(bookings) {
   if (bookings.length === 0) {
     const row = adminBookingsBody.insertRow();
     const cell = row.insertCell();
-    cell.colSpan = 6;
+    cell.colSpan = 7;
     cell.className = "text-center text-muted py-4";
     cell.textContent = "ไม่มีรายการจอง";
     return;
@@ -850,7 +869,17 @@ function renderAdminBookings(bookings) {
   bookings.forEach((booking) => {
     const row = adminBookingsBody.insertRow();
     const bookerDisplay = booking.pos ? `${booking.fullName} (${booking.pos})` : booking.fullName;
+
+    // เลขที่จอง (เช่น BR-2569/0001)
+    const noCell = document.createElement("td");
+    if (booking.bookingNo) {
+      noCell.innerHTML = `<span class="badge" style="background: rgba(0, 212, 255, 0.12); color: #00d4ff; border: 1px solid rgba(0, 212, 255, 0.35); font-family: monospace; font-size: 0.88rem; padding: 0.35em 0.6em; font-weight: 600; letter-spacing: 0.5px;">${booking.bookingNo}</span>`;
+    } else {
+      noCell.innerHTML = `<span style="color: var(--kbs-text-secondary);">-</span>`;
+    }
+
     row.append(
+      noCell,
       createCell(displayDate(booking.startTime)),
       createCell(bookerDisplay),
       createCell(booking.phone),
@@ -879,7 +908,7 @@ function renderAdminBookings(bookings) {
 
 async function loadAdminBookings() {
   if ((currentUser?.role || "").toLowerCase() !== "admin") return;
-  adminBookingsBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">กำลังโหลดข้อมูล...</td></tr>';
+  adminBookingsBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">กำลังโหลดข้อมูล...</td></tr>';
   try {
     const result = await getDocs(query(
       collection(db, "bookings"),
@@ -889,7 +918,7 @@ async function loadAdminBookings() {
     renderAdminBookings(result.docs.map((snapshot) => ({ id: snapshot.id, ...snapshot.data() })));
   } catch (error) {
     showMessage(appMessage, `โหลดข้อมูลผู้ดูแลไม่สำเร็จ: ${error.message}`, true);
-    adminBookingsBody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">ไม่สามารถโหลดข้อมูลได้</td></tr>';
+    adminBookingsBody.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-4">ไม่สามารถโหลดข้อมูลได้</td></tr>';
   }
 }
 

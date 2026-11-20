@@ -18,20 +18,19 @@ service cloud.firestore {
 
     function validBooking() {
       return request.resource.data.keys().hasAll([
-          'fullName', 'position', 'positionOther', 'phone', 'location', 'purpose',
+          'fullName', 'phone', 'location', 'purpose',
           'startTime', 'endTime', 'equipment', 'tables', 'chairs', 'status',
           'createdAt', 'updatedAt'
         ])
         && request.resource.data.keys().hasOnly([
-          'fullName', 'position', 'positionOther', 'phone', 'location', 'purpose',
+          'fullName', 'position', 'positionOther', 'pos', 'phone', 'location', 'purpose',
           'startTime', 'endTime', 'equipment', 'tables', 'chairs', 'status',
+          'line_user_id', 'placeId', 'bookingNo',
           'createdAt', 'updatedAt'
         ])
         && request.resource.data.fullName is string
         && request.resource.data.fullName.size() > 0
         && request.resource.data.fullName.size() <= 120
-        && request.resource.data.position in ['ครู', 'บุคลากรทางการศึกษา', 'อื่นๆ']
-        && request.resource.data.positionOther is string
         && request.resource.data.phone is string
         && request.resource.data.phone.matches('^[0-9]{9,10}$')
         && request.resource.data.location is string
@@ -88,7 +87,7 @@ service cloud.firestore {
           'createdAt', 'updatedAt'
         ])
         && request.resource.data.keys().hasOnly([
-          'bookingId', 'fullName', 'location', 'startTime', 'endTime', 'status',
+          'bookingId', 'bookingNo', 'fullName', 'pos', 'placeId', 'location', 'startTime', 'endTime', 'status',
           'createdAt', 'updatedAt'
         ])
         && request.resource.data.bookingId == bookingId
@@ -107,6 +106,11 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time
         && matchingPrivateBooking(bookingId);
       allow delete: if false;
+    }
+
+    // ตัวนับลำดับเอกสาร/เลขอ้างอิง (Counters เช่น room_booking, fix_report)
+    match /counters/{counterId} {
+      allow read, write: if true;
     }
 
     match /users/{userId} {
