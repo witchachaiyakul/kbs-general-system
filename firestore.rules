@@ -25,18 +25,18 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
           'fullName', 'position', 'positionOther', 'pos', 'phone', 'location', 'purpose',
           'startTime', 'endTime', 'equipment', 'tables', 'chairs', 'status',
-          'line_user_id', 'placeId', 'bookingNo',
+          'line_user_id', 'placeId', 'bookingNo', 'attendees',
           'createdAt', 'updatedAt'
         ])
         && request.resource.data.fullName is string
         && request.resource.data.fullName.size() > 0
         && request.resource.data.fullName.size() <= 120
         && request.resource.data.phone is string
-        && request.resource.data.phone.matches('^[0-9]{9,10}$')
         && request.resource.data.location is string
         && request.resource.data.location.size() > 0
         && request.resource.data.purpose is string
         && request.resource.data.purpose.size() > 0
+        && (!('attendees' in request.resource.data) || (request.resource.data.attendees is int && request.resource.data.attendees >= 0))
         && request.resource.data.startTime is timestamp
         && request.resource.data.endTime is timestamp
         && request.resource.data.endTime > request.resource.data.startTime
@@ -87,7 +87,7 @@ service cloud.firestore {
           'createdAt', 'updatedAt'
         ])
         && request.resource.data.keys().hasOnly([
-          'bookingId', 'bookingNo', 'fullName', 'pos', 'placeId', 'location', 'startTime', 'endTime', 'status',
+          'bookingId', 'bookingNo', 'fullName', 'pos', 'placeId', 'location', 'purpose', 'attendees', 'startTime', 'endTime', 'status',
           'createdAt', 'updatedAt'
         ])
         && request.resource.data.bookingId == bookingId

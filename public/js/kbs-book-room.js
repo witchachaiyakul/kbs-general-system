@@ -328,6 +328,9 @@ function selectRoom(place) {
   // อัปเดตแถบชื่อห้องและป้ายความจุในส่วนรายละเอียด
   const currentRoomName = document.getElementById("current-room-name");
   const currentRoomCap = document.getElementById("current-room-capacity");
+  const attendeesInput = document.getElementById("attendees");
+  const attendeesHint = document.getElementById("attendees-room-hint");
+
   if (currentRoomName) currentRoomName.textContent = place.name;
   if (currentRoomCap) {
     if (place.capacity) {
@@ -336,6 +339,15 @@ function selectRoom(place) {
     } else {
       currentRoomCap.classList.add("d-none");
     }
+  }
+
+  // ปรับแต่งคำแนะนำและ placeholder ของช่องระบุจำนวนผู้เข้าใช้ห้อง
+  if (place.capacity) {
+    if (attendeesInput) attendeesInput.placeholder = `ระบุจำนวนคน (ห้องนี้จุได้ ${place.capacity} คน)`;
+    if (attendeesHint) attendeesHint.innerHTML = `<i class="bi bi-check2-circle text-gold me-1"></i> ความจุของห้องนี้: <strong>${place.capacity}</strong> คน`;
+  } else {
+    if (attendeesInput) attendeesInput.placeholder = "ระบุจำนวนคน (เช่น 50)";
+    if (attendeesHint) attendeesHint.innerHTML = `<i class="bi bi-info-circle me-1"></i> ระบุจำนวนผู้เข้าร่วม (คน)`;
   }
 
   // อัปเดตรายการอุปกรณ์ประจำห้อง
@@ -365,6 +377,11 @@ function resetRoomSelection(scrollBack = true) {
   if (promptBanner) promptBanner.classList.remove("d-none");
 
   renderRoomFacilities("");
+
+  const attendeesInput = document.getElementById("attendees");
+  const attendeesHint = document.getElementById("attendees-room-hint");
+  if (attendeesInput) attendeesInput.placeholder = "ระบุจำนวนคน (เช่น 50)";
+  if (attendeesHint) attendeesHint.innerHTML = `<i class="bi bi-info-circle me-1"></i> ระบุจำนวนผู้เข้าร่วม (คน)`;
 
   if (scrollBack) {
     const roomGrid = document.getElementById("room-grid");
@@ -696,10 +713,18 @@ function renderPublicBookings() {
       noCell.innerHTML = `<span style="color: var(--kbs-text-secondary);">-</span>`;
     }
 
+    // สถานที่ พร้อมจำนวนผู้เข้าใช้ห้อง (ถ้ามี)
+    const locCell = document.createElement("td");
+    if (booking.attendees) {
+      locCell.innerHTML = `<span class="fw-medium">${booking.location || "-"}</span><div class="small mt-1" style="color: var(--kbs-text-secondary);"><i class="bi bi-people me-1"></i>${booking.attendees} คน</div>`;
+    } else {
+      locCell.textContent = booking.location || "-";
+    }
+
     row.append(
       noCell,
       createCell(booking.fullName),
-      createCell(booking.location),
+      locCell,
       createCell(displayDate(booking.startTime)),
       createCell(displayDate(booking.endTime))
     );
@@ -762,14 +787,22 @@ function getBookingFormData(form) {
     finalEquipment.push("อุปกรณ์มาตรฐานประจำห้อง");
   }
 
+  // ดึงจำนวนผู้เข้าใช้ห้อง
+  const attendeesRaw = formData.get("attendees");
+  const attendees = attendeesRaw ? parseInt(attendeesRaw, 10) : 0;
+  if (!attendees || attendees <= 0) {
+    throw new Error("กรุณาระบุจำนวนผู้เข้าใช้ห้อง (อย่างน้อย 1 คน)");
+  }
+
   return {
     line_user_id: currentUser.line_user_id || currentUser.userId || currentUser.id || "",
     fullName: currentUser.name,
     pos: currentUser.pos || currentUser.position || "",
-    phone: String(formData.get("phone")).trim(),
+    phone: String(formData.get("phone") || currentUser.phone || "").trim(),
     placeId: selectedPlace.id,     // บันทึกรหัส เช่น "11018"
     location: selectedPlace.name,  // บันทึกชื่อ เช่น "KBS Sport Center (อาคารศูนย์กีฬาชั้นล่าง)"
     purpose: String(formData.get("purpose")).trim(),
+    attendees: attendees,          // 👥 จำนวนผู้เข้าใช้ห้อง (คน)
     startTime: Timestamp.fromDate(startTime),
     endTime: Timestamp.fromDate(endTime),
     equipment: finalEquipment,
@@ -829,6 +862,8 @@ async function submitBooking(event) {
       pos: booking.pos,
       placeId: booking.placeId,
       location: booking.location,
+      purpose: booking.purpose,
+      attendees: booking.attendees,
       startTime: booking.startTime,
       endTime: booking.endTime,
       status: booking.status,
@@ -838,7 +873,7 @@ async function submitBooking(event) {
     await batch.commit();
 
     if (typeof insertAuditLog === "function" && currentUser) {
-      await insertAuditLog("BOOK_ROOM", `ขอจอง ${booking.location} (${booking.purpose}) เลขที่ ${bookingNo}`, currentUser);
+      await insertAuditLog("BOOK_ROOM", `ขอจอง ${booking.location} (${booking.purpose}) จำนวน ${booking.attendees} คน เลขที่ ${bookingNo}`, currentUser);
     }
 
     form.reset();
@@ -878,12 +913,21 @@ function renderAdminBookings(bookings) {
       noCell.innerHTML = `<span style="color: var(--kbs-text-secondary);">-</span>`;
     }
 
+    // สถานที่ วัตถุประสงค์ และจำนวนผู้เข้าใช้ห้อง
+    const locCell = document.createElement("td");
+    const locText = `${booking.location} — ${booking.purpose}`;
+    if (booking.attendees) {
+      locCell.innerHTML = `<div>${locText}</div><div class="small mt-1" style="color: var(--kbs-text-secondary);"><i class="bi bi-people me-1"></i>ผู้เข้าใช้: <strong>${booking.attendees}</strong> คน</div>`;
+    } else {
+      locCell.textContent = locText;
+    }
+
     row.append(
       noCell,
       createCell(displayDate(booking.startTime)),
       createCell(bookerDisplay),
       createCell(booking.phone),
-      createCell(`${booking.location} — ${booking.purpose}`)
+      locCell
     );
     const statusCell = row.insertCell();
     statusCell.append(createStatus(booking.status));

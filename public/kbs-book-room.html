@@ -191,15 +191,29 @@
                 </div>
               </div>
 
-          <!-- 2. วัตถุประสงค์ -->
-          <div class="col-12">
+          <!-- 2. วัตถุประสงค์ และ จำนวนผู้เข้าใช้ห้อง -->
+          <div class="col-md-8">
             <label class="field-label" for="purpose">
-              <i class="bi bi-card-text me-1"></i> วัตถุประสงค์ <span class="req">*</span>
+              <i class="bi bi-card-text me-1"></i> วัตถุประสงค์การใช้งาน <span class="req">*</span>
             </label>
             <div class="input-wrap">
               <i class="bi bi-pencil-square input-icon"></i>
               <input id="purpose" name="purpose" type="text" class="form-control"
-                maxlength="500" placeholder="ระบุรายละเอียดการประชุมหรือกิจกรรม" required>
+                maxlength="500" placeholder="ระบุรายละเอียดการประชุม อบรม หรือกิจกรรม" required>
+            </div>
+          </div>
+
+          <div class="col-md-4">
+            <label class="field-label" for="attendees">
+              <i class="bi bi-people-fill me-1"></i> จำนวนผู้เข้าใช้ห้อง <span class="req">*</span>
+            </label>
+            <div class="input-wrap">
+              <i class="bi bi-people input-icon"></i>
+              <input id="attendees" name="attendees" type="number" min="1" max="5000" class="form-control"
+                placeholder="ระบุจำนวนคน (เช่น 50)" required>
+            </div>
+            <div class="small mt-1" style="color: var(--kbs-text-secondary); font-size: 0.78rem;" id="attendees-room-hint">
+              <i class="bi bi-info-circle me-1"></i> ระบุจำนวนผู้เข้าร่วม (คน)
             </div>
           </div>
 
