@@ -643,6 +643,26 @@
         cursor: pointer;
         box-shadow: 0 0 12px rgba(0, 210, 255, 0.3);
       }
+      /* ─── Main Booking Form Modal ─── */
+      .booking-modal-content {
+        background: linear-gradient(180deg, rgba(8, 33, 72, 0.98) 0%, rgba(3, 14, 34, 0.99) 100%) !important;
+        border: 1.5px solid rgba(0, 180, 255, 0.45) !important;
+        border-radius: 18px !important;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9), 0 0 35px rgba(0, 140, 255, 0.3) !important;
+        color: #f0f6fc;
+        backdrop-filter: blur(20px);
+      }
+      .booking-modal-content .modal-header {
+        background: rgba(4, 20, 48, 0.7);
+        border-top-left-radius: 17px;
+        border-top-right-radius: 17px;
+      }
+      .booking-modal-content .modal-footer {
+        background: rgba(4, 20, 48, 0.85);
+        border-bottom-left-radius: 17px;
+        border-bottom-right-radius: 17px;
+      }
+
       .btn-room-photos:hover {
         background: linear-gradient(135deg, rgba(0, 210, 255, 0.45), rgba(0, 130, 255, 0.4));
         color: #ffffff;

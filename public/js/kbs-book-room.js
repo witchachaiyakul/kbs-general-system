@@ -385,16 +385,29 @@ function renderBannerRoomPhotos(place) {
   });
 }
 
+let isSubmittingBooking = false;
+
+function initDefaultBookingDates() {
+  const startDateInput = document.getElementById("start-date");
+  const endDateInput = document.getElementById("end-date");
+  if (startDateInput && !startDateInput.value) {
+    const today = new Date();
+    if (today.getHours() >= 16) {
+      today.setDate(today.getDate() + 1);
+    }
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    const defaultDate = `${yyyy}-${mm}-${dd}`;
+    startDateInput.value = defaultDate;
+    if (endDateInput && !endDateInput.value) {
+      endDateInput.value = defaultDate;
+    }
+  }
+}
+
 function selectRoom(place) {
   if (!place) return;
-
-  const locationInput = document.getElementById("location");
-
-  // หากกดซ้ำห้องเดิมที่เลือกอยู่ ให้ยกเลิกการเลือกทันที (Toggle Deselect)
-  if (locationInput && locationInput.value === String(place.id)) {
-    resetRoomSelection(true);
-    return;
-  }
 
   currentSelectedPlace = place;
 
@@ -405,15 +418,10 @@ function selectRoom(place) {
     card.setAttribute("aria-selected", isThis ? "true" : "false");
   });
 
+  const locationInput = document.getElementById("location");
   if (locationInput) locationInput.value = place.id;
 
-  // ซ่อนกล่องแจ้งเตือน และเปิดส่วนรายละเอียดการจอง
-  const detailsSection = document.getElementById("booking-details-section");
-  const promptBanner = document.getElementById("room-selection-prompt");
-  if (detailsSection) detailsSection.classList.remove("d-none");
-  if (promptBanner) promptBanner.classList.add("d-none");
-
-  // อัปเดตแถบชื่อห้องและป้ายความจุ
+  // อัปเดตแถบชื่อห้องและป้ายความจุใน Modal
   const currentRoomName = document.getElementById("current-room-name");
   const currentRoomCap = document.getElementById("current-room-capacity");
   const attendeesInput = document.getElementById("attendees");
@@ -444,14 +452,13 @@ function selectRoom(place) {
   // อัปเดตรายการอุปกรณ์ประจำห้อง
   renderRoomFacilities(place.id);
 
-  // 💥 เด้ง Popup รูปภาพบรรยากาศภายในห้อง 3 รูปขึ้นมาทันที ตามที่ผู้ใช้ต้องการ
-  showRoomPhotosModal(place);
+  // ตั้งค่าเริ่มต้นของวันที่
+  initDefaultBookingDates();
 
-  // เลื่อนหน้าจอลงมายังส่วนรายละเอียดอย่างนุ่มนวล
-  if (detailsSection) {
-    setTimeout(() => {
-      detailsSection.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }, 150);
+  // 💥 เด้ง Popup Modal ฟอร์มการจองทั้งหมดขึ้นมาทันที ตามที่ผู้ใช้สั่ง!
+  const bookingModalElem = document.getElementById("bookingModal");
+  if (bookingModalElem && window.bootstrap) {
+    window.bootstrap.Modal.getOrCreateInstance(bookingModalElem).show();
   }
 }
 
@@ -467,11 +474,6 @@ function resetRoomSelection(scrollBack = true) {
 
   const bannerPhotos = document.getElementById("banner-room-photos");
   if (bannerPhotos) bannerPhotos.innerHTML = "";
-
-  const detailsSection = document.getElementById("booking-details-section");
-  const promptBanner = document.getElementById("room-selection-prompt");
-  if (detailsSection) detailsSection.classList.add("d-none");
-  if (promptBanner) promptBanner.classList.remove("d-none");
 
   renderRoomFacilities("");
 
@@ -489,7 +491,7 @@ function resetRoomSelection(scrollBack = true) {
 }
 
 // ==========================================
-// 🖼️ ระบบป๊อปอัปดูรูปภาพภายในห้องประชุม (3 รูป)
+// 🖼️ ระบบป๊อปอัปดูรูปภาพขยาย (Lightbox Zoom)
 // ==========================================
 function openPhotoLightbox(src, title) {
   const lbModalElem = document.getElementById("photoLightboxModal");
@@ -504,79 +506,9 @@ function openPhotoLightbox(src, title) {
   bsLightbox.show();
 }
 
+// (popup 3 รูปเดิมถูกยกเลิกแล้ว ตามคำขอให้แสดงเป็นฟอร์มจองทั้งชุดแทน)
 function showRoomPhotosModal(place) {
-  if (!place) return;
-
-  const modalElem = document.getElementById("roomPhotosModal");
-  if (!modalElem || !window.bootstrap) return;
-
-  const nameElem = document.getElementById("modalRoomName");
-  const capElem = document.getElementById("modalRoomCapBadge");
-  const grid = document.getElementById("modalPhotosGrid");
-
-  if (nameElem) nameElem.textContent = place.name || "ห้องประชุม";
-  if (capElem) {
-    capElem.textContent = place.capacity ? `รองรับ ${place.capacity} คน` : "ห้องมาตรฐาน";
-  }
-
-  if (!grid) return;
-  grid.innerHTML = "";
-
-  const safeId = encodeURIComponent(String(place.id).trim());
-  const slots = buildPhotoSlots(place);
-
-  slots.forEach((slot, idx) => {
-    const col = document.createElement("div");
-    col.className = "col-md-4 col-12";
-
-    const card = document.createElement("div");
-    card.className = "modal-photo-card";
-
-    const frame = document.createElement("div");
-    frame.className = "modal-photo-frame";
-    frame.title = "คลิกเพื่อดูรูปภาพขนาดใหญ่";
-
-    const img = document.createElement("img");
-    img.alt = slot.title;
-    img.loading = "lazy";
-
-    let cIdx = 0;
-    img.src = slot.candidates[cIdx];
-
-    img.addEventListener("error", () => {
-      cIdx += 1;
-      if (cIdx < slot.candidates.length) {
-        img.src = slot.candidates[cIdx];
-      } else {
-        frame.innerHTML = `
-          <div class="modal-photo-placeholder">
-            <i class="bi bi-camera"></i>
-            <div class="fw-bold small text-white">รูปภายในห้องที่ ${idx + 1}</div>
-            <div style="font-size: 0.74rem; color: #94a3b8; margin-top: 5px;">
-              ยังไม่มีรูปภาพ<br>
-              <span class="text-gold">(ตั้งชื่อ: ${safeId}_${idx + 1}.jpg)</span>
-            </div>
-          </div>
-        `;
-        frame.style.cursor = "default";
-      }
-    });
-
-    frame.appendChild(img);
-    frame.addEventListener("click", () => {
-      const activeImg = frame.querySelector("img");
-      if (activeImg && activeImg.src && !activeImg.src.endsWith("undefined")) {
-        openPhotoLightbox(activeImg.src, `${place.name} - รูปที่ ${idx + 1}`);
-      }
-    });
-
-    card.appendChild(frame);
-    col.appendChild(card);
-    grid.appendChild(col);
-  });
-
-  const bsModal = window.bootstrap.Modal.getOrCreateInstance(modalElem);
-  bsModal.show();
+  // stub เพื่อความเข้ากันได้
 }
 
 async function populateRoomOptions() {
@@ -816,8 +748,19 @@ function getBookingFormData(form) {
   }
 
   const formData = new FormData(form);
-  const startTime = new Date(formData.get("startTime"));
-  const endTime = new Date(formData.get("endTime"));
+
+  const startDateVal = document.getElementById("start-date")?.value;
+  const startTimeVal = document.getElementById("start-time-select")?.value;
+  const endDateVal = document.getElementById("end-date")?.value;
+  const endTimeVal = document.getElementById("end-time-select")?.value;
+
+  const startTime = (startDateVal && startTimeVal)
+    ? new Date(`${startDateVal}T${startTimeVal}`)
+    : new Date(formData.get("startTime"));
+
+  const endTime = (endDateVal && endTimeVal)
+    ? new Date(`${endDateVal}T${endTimeVal}`)
+    : new Date(formData.get("endTime"));
 
   if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime()) || endTime <= startTime) {
     throw new Error("เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่มต้น");
@@ -934,11 +877,20 @@ async function submitBooking(event) {
       await insertAuditLog("BOOK_ROOM", `ขอจอง ${booking.location} (${booking.purpose}) จำนวน ${booking.attendees} คน เลขที่ ${bookingNo}`, currentUser);
     }
 
+    // ปิด Modal และรีเซ็ตฟอร์ม
+    isSubmittingBooking = true;
+    const bookingModalElem = document.getElementById("bookingModal");
+    if (bookingModalElem && window.bootstrap) {
+      window.bootstrap.Modal.getInstance(bookingModalElem)?.hide();
+    }
     form.reset();
-    resetRoomSelection();
+    resetRoomSelection(false);
+    isSubmittingBooking = false;
+
     showMessage(appMessage, `ส่งคำขอจองเรียบร้อยแล้ว (เลขที่: ${bookingNo}) กรุณารอผู้ดูแลอนุมัติ`, false);
     await loadPublicBookings();
   } catch (error) {
+    alert(`ส่งคำขอไม่สำเร็จ: ${error.message}`);
     showMessage(appMessage, `ส่งคำขอไม่สำเร็จ: ${error.message}`, true);
   } finally {
     setBusy(button, false);
@@ -1097,10 +1049,21 @@ async function initialize() {
   adminBookingsBody = document.getElementById("admin-bookings");
 
   const bookingForm = document.getElementById("booking-form");
-  bookingForm.addEventListener("submit", submitBooking);
-  bookingForm.addEventListener("reset", () => {
-    setTimeout(resetRoomSelection, 50);
-  });
+  if (bookingForm) {
+    bookingForm.addEventListener("submit", submitBooking);
+    bookingForm.addEventListener("reset", () => {
+      setTimeout(resetRoomSelection, 50);
+    });
+  }
+
+  const bookingModalElem = document.getElementById("bookingModal");
+  if (bookingModalElem) {
+    bookingModalElem.addEventListener("hidden.bs.modal", () => {
+      if (!isSubmittingBooking) {
+        resetRoomSelection(false);
+      }
+    });
+  }
   document.getElementById("month-filter").addEventListener("change", renderPublicBookings);
   document.getElementById("year-filter").addEventListener("change", renderPublicBookings);
   document.getElementById("refresh-bookings").addEventListener("click", loadPublicBookings);

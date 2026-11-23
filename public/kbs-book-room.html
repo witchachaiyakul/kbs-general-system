@@ -123,306 +123,26 @@
       <!-- Status Alert -->
       <div id="app-message" class="alert shadow-sm rounded-3 mb-4" role="status" aria-live="polite" hidden></div>
 
-      <!-- ─── TAB 1: BOOKING FORM ─── -->
+      <!-- ─── TAB 1: BOOKING VIEW (เลือกห้องประชุม) ─── -->
       <section id="booking-view" class="form-glass-card panel">
-        <form id="booking-form" class="row g-4">
-
+        <div class="row g-4">
           <!-- 1. การเลือกห้องประชุม (แบบการ์ดรูปภาพ ตามภาพร่าง 3 คอลัมน์) -->
           <div class="col-12">
-            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-              <label class="field-label mb-0">
-                <i class="bi bi-grid-3x3-gap-fill text-gold me-1"></i> เลือกห้องประชุมที่ต้องการใช้งาน <span class="req">*</span>
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+              <label class="field-label mb-0 fs-5">
+                <i class="bi bi-grid-3x3-gap-fill text-gold me-2"></i> เลือกห้องประชุมที่ต้องการใช้งาน <span class="req">*</span>
               </label>
               <span class="small text-secondary">
-                <i class="bi bi-info-circle me-1"></i> คลิกเลือกห้องเพื่อดูรายละเอียด (หรือกดซ้ำเพื่อยกเลิกการเลือก)
+                <i class="bi bi-hand-index-thumb text-warning me-1"></i> คลิกที่การ์ดห้องประชุมเพื่อเปิดหน้าต่างกรอกข้อมูลการจอง
               </span>
             </div>
 
-            <!-- Hidden input สำหรับเก็บค่าสถานที่ที่เลือก ส่งไปยัง Firestore -->
-            <input type="hidden" id="location" name="location" required>
-
-            <!-- ตะแกรงการ์ดห้องประชุม (ช่องสีขาวสำหรับแสดงรูปห้องประชุม รูปใส่ทีหลัง) -->
+            <!-- ตะแกรงการ์ดห้องประชุม -->
             <div id="room-grid" class="room-grid">
               <!-- การ์ดห้องประชุมจะถูกสร้างแบบ Dynamic ตรงนี้ -->
             </div>
           </div>
-
-          <!-- กล่องแจ้งเตือนให้กดเลือกห้องก่อน (จะหายไปเมื่อกดเลือกห้องแล้ว) -->
-          <div class="col-12" id="room-selection-prompt">
-            <div class="room-prompt-banner text-center">
-              <i class="bi bi-hand-index-thumb text-gold fs-1 d-block mb-2"></i>
-              <h5 class="text-white fw-bold mb-1">👆 กรุณากดเลือกห้องประชุมด้านบน</h5>
-              <p class="text-secondary small mb-0">คลิกที่การ์ดห้องประชุมที่ท่านต้องการ เพื่อเปิดฟอร์มกรอกรายละเอียดวัน เวลา และข้อมูลการจอง</p>
-            </div>
-          </div>
-
-          <!-- ─── ส่วนรายละเอียดการจอง (แสดงเมื่อเลือกห้องแล้วเท่านั้น) ─── -->
-          <div class="col-12 d-none" id="booking-details-section">
-            <div class="row g-4">
-
-              <!-- แถบสรุปห้องที่กำลังเลือก -->
-              <div class="col-12">
-                <div class="selected-room-banner">
-                  <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-2">
-                    <div class="d-flex align-items-center gap-3">
-                      <div class="text-gold fs-2">
-                        <i class="bi bi-check-circle-fill"></i>
-                      </div>
-                      <div>
-                        <span class="text-secondary small d-block">ห้องประชุมที่ท่านเลือก:</span>
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                          <h4 class="mb-0 text-white fw-bold" id="current-room-name">ห้อง KBS Audiotorium</h4>
-                          <span class="badge-capacity d-none" id="current-room-capacity">รองรับ 100 คน</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                      <button type="button" class="btn btn-room-photos btn-sm px-3" id="btn-view-room-photos">
-                        <i class="bi bi-images me-1"></i> ดูรูปภายในห้อง (3 รูป)
-                      </button>
-                      <button type="button" class="btn btn-outline-danger btn-sm px-3" id="btn-cancel-room">
-                        <i class="bi bi-x-circle me-1"></i> ยกเลิกการเลือก
-                      </button>
-                      <button type="button" class="btn btn-outline-warning btn-sm px-3" id="btn-change-room">
-                        <i class="bi bi-arrow-repeat me-1"></i> เปลี่ยนห้อง
-                      </button>
-                    </div>
-                  </div>
-                  <!-- รูป 3 รูปขนาดเล็กใต้ชื่อห้อง -->
-                  <div class="row g-2 mt-2 pt-2 border-top border-secondary border-opacity-25" id="banner-room-photos">
-                    <!-- สร้างโดย JS -->
-                  </div>
-                </div>
-              </div>
-
-          <!-- 2. วัตถุประสงค์ และ จำนวนผู้เข้าใช้ห้อง -->
-          <div class="col-md-8">
-            <label class="field-label" for="purpose">
-              <i class="bi bi-card-text me-1"></i> วัตถุประสงค์การใช้งาน <span class="req">*</span>
-            </label>
-            <div class="input-wrap">
-              <i class="bi bi-pencil-square input-icon"></i>
-              <input id="purpose" name="purpose" type="text" class="form-control"
-                maxlength="500" placeholder="ระบุรายละเอียดการประชุม อบรม หรือกิจกรรม" required>
-            </div>
-          </div>
-
-          <div class="col-md-4">
-            <label class="field-label" for="attendees">
-              <i class="bi bi-people-fill me-1"></i> จำนวนผู้เข้าใช้ห้อง <span class="req">*</span>
-            </label>
-            <div class="input-wrap">
-              <i class="bi bi-people input-icon"></i>
-              <input id="attendees" name="attendees" type="number" min="1" max="5000" class="form-control"
-                placeholder="ระบุจำนวนคน (เช่น 50)" required>
-            </div>
-            <div class="small mt-1" style="color: var(--kbs-text-secondary); font-size: 0.78rem;" id="attendees-room-hint">
-              <i class="bi bi-info-circle me-1"></i> ระบุจำนวนผู้เข้าร่วม (คน)
-            </div>
-          </div>
-
-          <!-- 3. วันและเวลาที่ใช้ (เลือกง่าย รวดเร็ว) -->
-          <div class="col-12">
-            <!-- Hidden inputs สำหรับส่งค่าไป Firestore (ชื่อตัวแปรเดิม startTime, endTime) -->
-            <input type="hidden" id="start-time" name="startTime" required>
-            <input type="hidden" id="end-time" name="endTime" required>
-
-            <div class="row g-3">
-              <!-- วันและเวลาเริ่ม -->
-              <div class="col-md-6">
-                <label class="field-label" for="start-date">
-                  <i class="bi bi-calendar-event me-1"></i> วันและเวลาที่เริ่ม <span class="req">*</span>
-                </label>
-                <div class="row g-2">
-                  <div class="col-7">
-                    <div class="input-wrap">
-                      <i class="bi bi-calendar3 input-icon"></i>
-                      <input id="start-date" type="date" class="form-control" required>
-                    </div>
-                  </div>
-                  <div class="col-5">
-                    <div class="input-wrap">
-                      <i class="bi bi-clock input-icon"></i>
-                      <select id="start-time-select" class="form-select" required>
-                        <option value="08:00">08:00 น.</option>
-                        <option value="08:30" selected>08:30 น.</option>
-                        <option value="09:00">09:00 น.</option>
-                        <option value="09:30">09:30 น.</option>
-                        <option value="10:00">10:00 น.</option>
-                        <option value="10:30">10:30 น.</option>
-                        <option value="11:00">11:00 น.</option>
-                        <option value="11:30">11:30 น.</option>
-                        <option value="12:00">12:00 น.</option>
-                        <option value="13:00">13:00 น.</option>
-                        <option value="13:30">13:30 น.</option>
-                        <option value="14:00">14:00 น.</option>
-                        <option value="14:30">14:30 น.</option>
-                        <option value="15:00">15:00 น.</option>
-                        <option value="15:30">15:30 น.</option>
-                        <option value="16:00">16:00 น.</option>
-                        <option value="16:30">16:30 น.</option>
-                        <option value="17:00">17:00 น.</option>
-                        <option value="17:30">17:30 น.</option>
-                        <option value="18:00">18:00 น.</option>
-                        <option value="19:00">19:00 น.</option>
-                        <option value="20:00">20:00 น.</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- วันและเวลาสิ้นสุด -->
-              <div class="col-md-6">
-                <label class="field-label" for="end-date">
-                  <i class="bi bi-calendar-check me-1"></i> วันและเวลาสิ้นสุด <span class="req">*</span>
-                </label>
-                <div class="row g-2">
-                  <div class="col-7">
-                    <div class="input-wrap">
-                      <i class="bi bi-calendar3-event input-icon"></i>
-                      <input id="end-date" type="date" class="form-control" required>
-                    </div>
-                  </div>
-                  <div class="col-5">
-                    <div class="input-wrap">
-                      <i class="bi bi-clock-history input-icon"></i>
-                      <select id="end-time-select" class="form-select" required>
-                        <option value="08:30">08:30 น.</option>
-                        <option value="09:00">09:00 น.</option>
-                        <option value="09:30">09:30 น.</option>
-                        <option value="10:00">10:00 น.</option>
-                        <option value="10:30">10:30 น.</option>
-                        <option value="11:00">11:00 น.</option>
-                        <option value="11:30">11:30 น.</option>
-                        <option value="12:00">12:00 น.</option>
-                        <option value="12:30">12:30 น.</option>
-                        <option value="13:00">13:00 น.</option>
-                        <option value="13:30">13:30 น.</option>
-                        <option value="14:00">14:00 น.</option>
-                        <option value="14:30">14:30 น.</option>
-                        <option value="15:00">15:00 น.</option>
-                        <option value="15:30">15:30 น.</option>
-                        <option value="16:00">16:00 น.</option>
-                        <option value="16:30" selected>16:30 น.</option>
-                        <option value="17:00">17:00 น.</option>
-                        <option value="17:30">17:30 น.</option>
-                        <option value="18:00">18:00 น.</option>
-                        <option value="18:30">18:30 น.</option>
-                        <option value="19:00">19:00 น.</option>
-                        <option value="20:00">20:00 น.</option>
-                        <option value="21:00">21:00 น.</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 4. อุปกรณ์และสิ่งอำนวยความสะดวกประจำห้อง + ช่องระบุเพิ่มเติม -->
-          <div class="col-12">
-            <label class="field-label">
-              <i class="bi bi-cpu me-1"></i> อุปกรณ์และสิ่งอำนวยความสะดวกประจำห้อง
-            </label>
-            
-            <!-- การ์ดแสดงอุปกรณ์ประจำห้องอัตโนมัติ -->
-            <div id="room-facilities-card" class="room-facility-box">
-              <div class="facility-status-text" id="facility-empty-hint">
-                <i class="bi bi-info-circle text-gold me-2"></i> กรุณาเลือกสถานที่ด้านบนเพื่อดูรายการอุปกรณ์ประจำห้อง
-              </div>
-              <div id="facility-content" class="d-none">
-                <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
-                  <span class="facility-room-title" id="facility-room-name">
-                    <i class="bi bi-building-check text-gold me-1"></i> รายการอุปกรณ์ที่มีให้พร้อมใช้งาน:
-                  </span>
-                  <span class="badge-capacity" id="facility-room-cap"></span>
-                </div>
-                <div class="facility-tag-list" id="facility-tags">
-                  <!-- แท็กอุปกรณ์จะแสดงตามห้องที่เลือกโดยอัตโนมัติ -->
-                </div>
-              </div>
-            </div>
-
-            <!-- ช่องระบุเพิ่มเติม: อุปกรณ์ โต๊ะ-เก้าอี้ หรือสิ่งอำนวยความสะดวกพิเศษ -->
-            <div class="mt-3">
-              <label class="field-label" for="equipment-extra">
-                <i class="bi bi-plus-circle me-1"></i> อุปกรณ์ / โต๊ะ-เก้าอี้ หรือสิ่งอำนวยความสะดวกที่ต้องการเพิ่มเติม <span class="text-secondary small fw-normal">(ถ้ามี)</span>
-              </label>
-              <div class="input-wrap">
-                <i class="bi bi-pencil-square input-icon"></i>
-                <input id="equipment-extra" name="equipmentExtra" type="text" class="form-control"
-                  placeholder="ระบุสิ่งที่ต้องการเพิ่มเติม เช่น ขอโต๊ะเพิ่ม 5 ตัว, เก้าอี้เสริม 30 ตัว, ไมค์ลอย 2 ตัว, ปลั๊กพ่วง (หากไม่มีให้เว้นว่างไว้)">
-              </div>
-            </div>
-
-            <!-- Hidden inputs สำหรับ tables และ chairs เพื่อรักษาความเข้ากันได้กับฐานข้อมูล -->
-            <input type="hidden" id="tables" name="tables" value="0">
-            <input type="hidden" id="chairs" name="chairs" value="0">
-          </div>
-
-          <!-- 5. รูปภาพประกอบ (ตรงกลางกรอบสมบูรณ์แบบ) -->
-          <div class="col-12">
-            <label class="field-label">
-              <i class="bi bi-images me-1"></i> หนังสือนำ/แผนผังการจัดห้อง(ถ้ามี) <span class="text-secondary small fw-normal">(สูงสุด 5 รูป)</span>
-            </label>
-            <div class="img-upload-box">
-              <div class="dropdown text-center">
-                <button class="btn btn-gold-pill dropdown-toggle" type="button"
-                  id="imgDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
-                  <i class="bi bi-camera me-1"></i> เพิ่มรูปภาพ
-                </button>
-                <ul class="dropdown-menu shadow border-0" style="background:#071f42; border:1px solid rgba(0,180,255,0.3) !important;" aria-labelledby="imgDropdownBtn">
-                  <li>
-                    <label class="dropdown-item py-2" for="img-upload" style="color:#dce9f7; cursor:pointer;">
-                      <i class="bi bi-image me-2 text-warning"></i> เลือกรูปจากอัลบั้ม
-                      <input id="img-upload" type="file" accept="image/*" multiple hidden>
-                    </label>
-                  </li>
-                  <li><hr class="dropdown-divider my-1" style="border-color:rgba(255,255,255,0.1);"></li>
-                  <li>
-                    <label class="dropdown-item py-2" for="img-camera" style="color:#dce9f7; cursor:pointer;">
-                      <i class="bi bi-camera-fill me-2 text-success"></i> ถ่ายรูปด้วยกล้อง
-                      <input id="img-camera" type="file" accept="image/*" capture="environment" hidden>
-                    </label>
-                  </li>
-                </ul>
-              </div>
-
-              <!-- Preview container -->
-              <div id="img-preview-container" class="d-flex flex-wrap justify-content-center gap-2 mt-2 w-100">
-                <div id="img-placeholder" class="text-center w-100">
-                  <div class="small" style="color:var(--kbs-text-secondary);">ยังไม่ได้เลือกรูปภาพ (สูงสุด 5 รูป)</div>
-                </div>
-              </div>
-              <div id="img-count" class="mt-2 small fw-semibold text-center text-warning" hidden></div>
-            </div>
-          </div>
-
-          <!-- 7. ข้อตกลงความยินยอม -->
-          <div class="col-12">
-            <div class="agreement-box">
-              <div class="form-check mb-0">
-                <input id="agreement" class="form-check-input" type="checkbox" required>
-                <label class="form-check-label agreement-label fw-semibold" for="agreement">
-                  <i class="bi bi-shield-check me-1 text-warning"></i>
-                  ข้าพเจ้าขอรับรองว่าจะใช้สถานที่และทรัพย์สินของโรงเรียนด้วยความระมัดระวัง
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <!-- 8. ปุ่มส่งคำขอจอง -->
-          <div class="col-12 text-center mt-4">
-            <button id="submit-booking" class="btn btn-submit-main" type="submit">
-              <i class="bi bi-send-fill"></i> ส่งคำขอจอง
-            </button>
-          </div>
-
-            </div> <!-- /row g-4 -->
-          </div> <!-- /#booking-details-section -->
-
-        </form>
+        </div>
       </section>
 
       <!-- ─── TAB 2: PUBLIC BOOKINGS VIEW ─── -->
@@ -523,38 +243,276 @@
 
 
     <!-- ═════════════════════════════════════════════════════════════════════
-         MODAL: ดูรูปภาพบรรยากาศภายในห้องประชุม (3 รูป)
+         MODAL: ฟอร์มกรอกรายละเอียดและยืนยันการจองห้องประชุม (Popup เด้งหลังเลือกห้อง)
          ═════════════════════════════════════════════════════════════════════ -->
-    <div class="modal fade" id="roomPhotosModal" tabindex="-1" aria-labelledby="roomPhotosModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content room-photos-modal-content">
-          <div class="modal-header border-bottom border-secondary border-opacity-25 pb-3">
-            <div>
-              <h5 class="modal-title fw-bold text-white d-flex align-items-center gap-2 mb-1" id="roomPhotosModalLabel">
-                <i class="bi bi-images text-warning"></i>
-                <span>ภาพบรรยากาศภายใน</span>
-                <span class="text-gold" id="modalRoomName">ห้องประชุม</span>
-              </h5>
-              <div class="d-flex align-items-center gap-2">
-                <span class="badge bg-primary bg-opacity-75" id="modalRoomCapBadge">ห้องมาตรฐาน</span>
-                <small class="text-secondary">รูปภาพบรรยากาศ 3 มุมมองภายในห้องประชุม</small>
+    <div class="modal fade" id="bookingModal" tabindex="-1" aria-labelledby="bookingModalLabel" aria-hidden="true" data-bs-backdrop="static">
+      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content booking-modal-content">
+          <form id="booking-form" class="h-100 d-flex flex-column mb-0">
+            <!-- Modal Header: แถบสรุปห้องที่กำลังเลือก + รูป 3 รูปขนาดเล็ก -->
+            <div class="modal-header border-bottom border-secondary border-opacity-25 pb-3">
+              <div class="w-100">
+                <div class="selected-room-banner p-3 mb-0">
+                  <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-2">
+                    <div class="d-flex align-items-center gap-3">
+                      <div class="text-gold fs-2">
+                        <i class="bi bi-check-circle-fill"></i>
+                      </div>
+                      <div>
+                        <span class="text-secondary small d-block">ห้องประชุมที่ท่านเลือก:</span>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                          <h4 class="mb-0 text-white fw-bold" id="current-room-name">ห้องประชุม</h4>
+                          <span class="badge-capacity d-none" id="current-room-capacity"></span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                      <button type="button" class="btn btn-outline-warning btn-sm px-3" data-bs-dismiss="modal" id="btn-change-room">
+                        <i class="bi bi-arrow-repeat me-1"></i> เปลี่ยนห้อง
+                      </button>
+                      <button type="button" class="btn-close btn-close-white ms-1" data-bs-dismiss="modal" aria-label="Close" id="btn-modal-close"></button>
+                    </div>
+                  </div>
+                  <!-- รูป 3 รูปขนาดเล็กใต้ชื่อห้อง (คลิกขยายดูรูปเต็มได้) -->
+                  <div class="row g-2 mt-2 pt-2 border-top border-secondary border-opacity-25" id="banner-room-photos">
+                    <!-- สร้างโดย JS -->
+                  </div>
+                </div>
               </div>
             </div>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body p-4">
-            <div class="row g-3" id="modalPhotosGrid">
-              <!-- 3 Photo Cards generated via JS -->
+
+            <!-- Modal Body: ฟอร์มกรอกรายละเอียดทั้งหมด -->
+            <div class="modal-body p-4">
+              <!-- Hidden inputs -->
+              <input type="hidden" id="location" name="location" required>
+              <input type="hidden" id="start-time" name="startTime" required>
+              <input type="hidden" id="end-time" name="endTime" required>
+
+              <div class="row g-4">
+                <!-- 2. วัตถุประสงค์ และ จำนวนผู้เข้าใช้ห้อง -->
+                <div class="col-md-8">
+                  <label class="field-label" for="purpose">
+                    <i class="bi bi-card-text me-1"></i> วัตถุประสงค์การใช้งาน <span class="req">*</span>
+                  </label>
+                  <div class="input-wrap">
+                    <i class="bi bi-pencil-square input-icon"></i>
+                    <input id="purpose" name="purpose" type="text" class="form-control"
+                      maxlength="500" placeholder="ระบุรายละเอียดการประชุม อบรม หรือกิจกรรม" required>
+                  </div>
+                </div>
+
+                <div class="col-md-4">
+                  <label class="field-label" for="attendees">
+                    <i class="bi bi-people-fill me-1"></i> จำนวนผู้เข้าใช้ห้อง <span class="req">*</span>
+                  </label>
+                  <div class="input-wrap">
+                    <i class="bi bi-people input-icon"></i>
+                    <input id="attendees" name="attendees" type="number" min="1" max="5000" class="form-control"
+                      placeholder="ระบุจำนวนคน (เช่น 50)" required>
+                  </div>
+                  <div class="small mt-1" style="color: var(--kbs-text-secondary); font-size: 0.78rem;" id="attendees-room-hint">
+                    <i class="bi bi-info-circle me-1"></i> ระบุจำนวนผู้เข้าร่วม (คน)
+                  </div>
+                </div>
+
+                <!-- 3. วันและเวลาที่ใช้ (เลือกง่าย รวดเร็ว) -->
+                <div class="col-12">
+                  <div class="row g-3">
+                    <!-- วันและเวลาเริ่ม -->
+                    <div class="col-md-6">
+                      <label class="field-label" for="start-date">
+                        <i class="bi bi-calendar-event me-1"></i> วันและเวลาที่เริ่ม <span class="req">*</span>
+                      </label>
+                      <div class="row g-2">
+                        <div class="col-7">
+                          <div class="input-wrap">
+                            <i class="bi bi-calendar3 input-icon"></i>
+                            <input id="start-date" type="date" class="form-control" required>
+                          </div>
+                        </div>
+                        <div class="col-5">
+                          <div class="input-wrap">
+                            <i class="bi bi-clock input-icon"></i>
+                            <select id="start-time-select" class="form-select" required>
+                              <option value="08:00">08:00 น.</option>
+                              <option value="08:30" selected>08:30 น.</option>
+                              <option value="09:00">09:00 น.</option>
+                              <option value="09:30">09:30 น.</option>
+                              <option value="10:00">10:00 น.</option>
+                              <option value="10:30">10:30 น.</option>
+                              <option value="11:00">11:00 น.</option>
+                              <option value="11:30">11:30 น.</option>
+                              <option value="12:00">12:00 น.</option>
+                              <option value="13:00">13:00 น.</option>
+                              <option value="13:30">13:30 น.</option>
+                              <option value="14:00">14:00 น.</option>
+                              <option value="14:30">14:30 น.</option>
+                              <option value="15:00">15:00 น.</option>
+                              <option value="15:30">15:30 น.</option>
+                              <option value="16:00">16:00 น.</option>
+                              <option value="16:30">16:30 น.</option>
+                              <option value="17:00">17:00 น.</option>
+                              <option value="17:30">17:30 น.</option>
+                              <option value="18:00">18:00 น.</option>
+                              <option value="19:00">19:00 น.</option>
+                              <option value="20:00">20:00 น.</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- วันและเวลาสิ้นสุด -->
+                    <div class="col-md-6">
+                      <label class="field-label" for="end-date">
+                        <i class="bi bi-calendar-check me-1"></i> วันและเวลาสิ้นสุด <span class="req">*</span>
+                      </label>
+                      <div class="row g-2">
+                        <div class="col-7">
+                          <div class="input-wrap">
+                            <i class="bi bi-calendar3-event input-icon"></i>
+                            <input id="end-date" type="date" class="form-control" required>
+                          </div>
+                        </div>
+                        <div class="col-5">
+                          <div class="input-wrap">
+                            <i class="bi bi-clock-history input-icon"></i>
+                            <select id="end-time-select" class="form-select" required>
+                              <option value="08:30">08:30 น.</option>
+                              <option value="09:00">09:00 น.</option>
+                              <option value="09:30">09:30 น.</option>
+                              <option value="10:00">10:00 น.</option>
+                              <option value="10:30">10:30 น.</option>
+                              <option value="11:00">11:00 น.</option>
+                              <option value="11:30">11:30 น.</option>
+                              <option value="12:00">12:00 น.</option>
+                              <option value="12:30">12:30 น.</option>
+                              <option value="13:00">13:00 น.</option>
+                              <option value="13:30">13:30 น.</option>
+                              <option value="14:00">14:00 น.</option>
+                              <option value="14:30">14:30 น.</option>
+                              <option value="15:00">15:00 น.</option>
+                              <option value="15:30">15:30 น.</option>
+                              <option value="16:00">16:00 น.</option>
+                              <option value="16:30" selected>16:30 น.</option>
+                              <option value="17:00">17:00 น.</option>
+                              <option value="17:30">17:30 น.</option>
+                              <option value="18:00">18:00 น.</option>
+                              <option value="18:30">18:30 น.</option>
+                              <option value="19:00">19:00 น.</option>
+                              <option value="20:00">20:00 น.</option>
+                              <option value="21:00">21:00 น.</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 4. อุปกรณ์และสิ่งอำนวยความสะดวกประจำห้อง + ช่องระบุเพิ่มเติม -->
+                <div class="col-12">
+                  <label class="field-label">
+                    <i class="bi bi-cpu me-1"></i> อุปกรณ์และสิ่งอำนวยความสะดวกประจำห้อง
+                  </label>
+                  
+                  <!-- การ์ดแสดงอุปกรณ์ประจำห้องอัตโนมัติ -->
+                  <div id="room-facilities-card" class="room-facility-box">
+                    <div class="facility-status-text" id="facility-empty-hint">
+                      <i class="bi bi-info-circle text-gold me-2"></i> กรุณาเลือกสถานที่ด้านบนเพื่อดูรายการอุปกรณ์ประจำห้อง
+                    </div>
+                    <div id="facility-content" class="d-none">
+                      <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+                        <span class="facility-room-title" id="facility-room-name">
+                          <i class="bi bi-building-check text-gold me-1"></i> รายการอุปกรณ์ที่มีให้พร้อมใช้งาน:
+                        </span>
+                        <span class="badge-capacity" id="facility-room-cap"></span>
+                      </div>
+                      <div class="facility-tag-list" id="facility-tags">
+                        <!-- แท็กอุปกรณ์จะแสดงตามห้องที่เลือกโดยอัตโนมัติ -->
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- ช่องระบุเพิ่มเติม -->
+                  <div class="mt-3">
+                    <label class="field-label" for="equipment-extra">
+                      <i class="bi bi-plus-circle me-1"></i> อุปกรณ์ / โต๊ะ-เก้าอี้ หรือสิ่งอำนวยความสะดวกที่ต้องการเพิ่มเติม <span class="text-secondary small fw-normal">(ถ้ามี)</span>
+                    </label>
+                    <div class="input-wrap">
+                      <i class="bi bi-pencil-square input-icon"></i>
+                      <input id="equipment-extra" name="equipmentExtra" type="text" class="form-control"
+                        placeholder="ระบุสิ่งที่ต้องการเพิ่มเติม เช่น ขอโต๊ะเพิ่ม 5 ตัว, เก้าอี้เสริม 30 ตัว, ไมค์ลอย 2 ตัว, ปลั๊กพ่วง (หากไม่มีให้เว้นว่างไว้)">
+                    </div>
+                  </div>
+
+                  <input type="hidden" id="tables" name="tables" value="0">
+                  <input type="hidden" id="chairs" name="chairs" value="0">
+                </div>
+
+                <!-- 5. รูปภาพประกอบ (ตรงกลางกรอบสมบูรณ์แบบ) -->
+                <div class="col-12">
+                  <label class="field-label">
+                    <i class="bi bi-images me-1"></i> หนังสือนำ/แผนผังการจัดห้อง (ถ้ามี) <span class="text-secondary small fw-normal">(สูงสุด 5 รูป)</span>
+                  </label>
+                  <div class="img-upload-box">
+                    <div class="dropdown text-center">
+                      <button class="btn btn-gold-pill dropdown-toggle" type="button"
+                        id="imgDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-camera me-1"></i> เพิ่มรูปภาพ
+                      </button>
+                      <ul class="dropdown-menu shadow border-0" style="background:#071f42; border:1px solid rgba(0,180,255,0.3) !important;" aria-labelledby="imgDropdownBtn">
+                        <li>
+                          <label class="dropdown-item py-2" for="img-upload" style="color:#dce9f7; cursor:pointer;">
+                            <i class="bi bi-image me-2 text-warning"></i> เลือกรูปจากอัลบั้ม
+                            <input id="img-upload" type="file" accept="image/*" multiple hidden>
+                          </label>
+                        </li>
+                        <li><hr class="dropdown-divider my-1" style="border-color:rgba(255,255,255,0.1);"></li>
+                        <li>
+                          <label class="dropdown-item py-2" for="img-camera" style="color:#dce9f7; cursor:pointer;">
+                            <i class="bi bi-camera-fill me-2 text-success"></i> ถ่ายรูปด้วยกล้อง
+                            <input id="img-camera" type="file" accept="image/*" capture="environment" hidden>
+                          </label>
+                        </li>
+                      </ul>
+                    </div>
+
+                    <!-- Preview container -->
+                    <div id="img-preview-container" class="d-flex flex-wrap justify-content-center gap-2 mt-2 w-100">
+                      <div id="img-placeholder" class="text-center w-100">
+                        <div class="small" style="color:var(--kbs-text-secondary);">ยังไม่ได้เลือกรูปภาพ (สูงสุด 5 รูป)</div>
+                      </div>
+                    </div>
+                    <div id="img-count" class="mt-2 small fw-semibold text-center text-warning" hidden></div>
+                  </div>
+                </div>
+
+                <!-- 6. ข้อตกลงความยินยอม -->
+                <div class="col-12">
+                  <div class="agreement-box">
+                    <div class="form-check mb-0">
+                      <input id="agreement" class="form-check-input" type="checkbox" required>
+                      <label class="form-check-label agreement-label fw-semibold" for="agreement">
+                        <i class="bi bi-shield-check me-1 text-warning"></i>
+                        ข้าพเจ้าขอรับรองว่าจะใช้สถานที่และทรัพย์สินของโรงเรียนด้วยความระมัดระวัง
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="modal-footer border-top border-secondary border-opacity-25 py-2">
-            <span class="text-secondary small me-auto">
-              <i class="bi bi-zoom-in me-1 text-gold"></i> คลิกที่รูปภาพเพื่อดูภาพขยายเต็มจอ
-            </span>
-            <button type="button" class="btn btn-outline-light btn-sm px-4" data-bs-dismiss="modal">
-              <i class="bi bi-x me-1"></i> ปิด
-            </button>
-          </div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer border-top border-secondary border-opacity-25 py-3 d-flex justify-content-between align-items-center">
+              <button type="button" class="btn btn-outline-secondary btn-sm px-4" data-bs-dismiss="modal">
+                <i class="bi bi-x-circle me-1"></i> ยกเลิก / ปิดหน้าต่าง
+              </button>
+              <button id="submit-booking" class="btn btn-submit-main px-4 py-2" type="submit">
+                <i class="bi bi-send-fill me-1"></i> ส่งคำขอจอง
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
