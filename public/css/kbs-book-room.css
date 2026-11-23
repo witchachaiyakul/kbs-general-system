@@ -644,7 +644,15 @@
         box-shadow: 0 0 12px rgba(0, 210, 255, 0.3);
       }
       /* ─── Main Booking Form Modal ─── */
-      .booking-modal-content {
+      #bookingModal .modal-dialog {
+        max-width: 950px;
+        margin: 1.5rem auto;
+      }
+      #bookingModal .booking-modal-content {
+        max-height: 90vh !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
         background: linear-gradient(180deg, rgba(8, 33, 72, 0.98) 0%, rgba(3, 14, 34, 0.99) 100%) !important;
         border: 1.5px solid rgba(0, 180, 255, 0.45) !important;
         border-radius: 18px !important;
@@ -652,15 +660,30 @@
         color: #f0f6fc;
         backdrop-filter: blur(20px);
       }
-      .booking-modal-content .modal-header {
-        background: rgba(4, 20, 48, 0.7);
+      #bookingModal .modal-header {
+        background: rgba(4, 20, 48, 0.85);
         border-top-left-radius: 17px;
         border-top-right-radius: 17px;
+        flex-shrink: 0;
+        position: sticky;
+        top: 0;
+        z-index: 10;
       }
-      .booking-modal-content .modal-footer {
-        background: rgba(4, 20, 48, 0.85);
+      #bookingModal .modal-body {
+        overflow-y: auto !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        -webkit-overflow-scrolling: touch;
+      }
+      #bookingModal .modal-footer {
+        background: rgba(4, 20, 48, 0.95);
         border-bottom-left-radius: 17px;
         border-bottom-right-radius: 17px;
+        flex-shrink: 0;
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
+        box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.4);
       }
 
       .btn-room-photos:hover {
