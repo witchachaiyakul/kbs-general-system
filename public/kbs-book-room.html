@@ -314,13 +314,21 @@
                   </div>
                 </div>
 
-                <!-- 3. วันและเวลาที่ใช้ (เลือกง่าย รวดเร็ว) -->
+                <!-- 3. วันและเวลาที่ใช้ (จองวันต่อวัน ห้ามข้ามวัน) -->
                 <div class="col-12">
+                  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                    <label class="field-label mb-0">
+                      <i class="bi bi-clock-history me-1 text-gold"></i> วันและเวลาที่ใช้ห้องประชุม <span class="req">*</span>
+                    </label>
+                    <span class="badge rounded-pill" style="background: rgba(255, 193, 7, 0.15); color: #ffc107; border: 1px solid rgba(255, 193, 7, 0.4); font-size: 0.78rem;">
+                      <i class="bi bi-shield-check me-1"></i> จองวันต่อวัน (ห้ามจองข้ามวัน)
+                    </span>
+                  </div>
                   <div class="row g-3">
                     <!-- วันและเวลาเริ่ม -->
                     <div class="col-md-6">
-                      <label class="field-label" for="start-date">
-                        <i class="bi bi-calendar-event me-1"></i> วันและเวลาที่เริ่ม <span class="req">*</span>
+                      <label class="field-label" for="start-date" style="font-size: 0.88rem;">
+                        <i class="bi bi-calendar-event me-1"></i> วันที่ใช้งานและเวลาเริ่ม <span class="req">*</span>
                       </label>
                       <div class="row g-2">
                         <div class="col-7">
@@ -361,16 +369,19 @@
                       </div>
                     </div>
 
-                    <!-- วันและเวลาสิ้นสุด -->
+                    <!-- วันและเวลาสิ้นสุด (ล็อควันเดียวกับวันเริ่มต้น) -->
                     <div class="col-md-6">
-                      <label class="field-label" for="end-date">
-                        <i class="bi bi-calendar-check me-1"></i> วันและเวลาสิ้นสุด <span class="req">*</span>
+                      <label class="field-label" for="end-date" style="font-size: 0.88rem;">
+                        <i class="bi bi-calendar-check me-1"></i> วันสิ้นสุดและเวลาสิ้นสุด <span class="req">*</span>
                       </label>
                       <div class="row g-2">
                         <div class="col-7">
                           <div class="input-wrap">
                             <i class="bi bi-calendar3-event input-icon"></i>
-                            <input id="end-date" type="date" class="form-control" required>
+                            <input id="end-date" type="date" class="form-control" readonly required style="background: rgba(1, 10, 24, 0.7); cursor: not-allowed;" title="ระบบล็อคให้เป็นวันเดียวกับวันเริ่มต้น (จองวันต่อวัน)">
+                          </div>
+                          <div class="small mt-1 text-gold" style="font-size: 0.74rem;">
+                            <i class="bi bi-lock-fill me-1"></i> วันเดียวกับวันเริ่ม (วันต่อวัน)
                           </div>
                         </div>
                         <div class="col-5">

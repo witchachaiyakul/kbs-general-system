@@ -387,23 +387,60 @@ function renderBannerRoomPhotos(place) {
 
 let isSubmittingBooking = false;
 
+function bindDateInputs() {
+  const startDateInput = document.getElementById("start-date");
+  const endDateInput = document.getElementById("end-date");
+  if (startDateInput && !startDateInput.dataset.syncBound) {
+    startDateInput.dataset.syncBound = "true";
+    startDateInput.addEventListener("change", () => {
+      if (endDateInput) {
+        endDateInput.value = startDateInput.value;
+        endDateInput.min = startDateInput.value;
+        endDateInput.max = startDateInput.value;
+      }
+    });
+  }
+  if (endDateInput && !endDateInput.dataset.syncBound) {
+    endDateInput.dataset.syncBound = "true";
+    endDateInput.addEventListener("change", () => {
+      if (startDateInput && endDateInput.value !== startDateInput.value) {
+        alert("ระบบไม่อนุญาตให้จองข้ามวัน กรุณาจองการใช้ห้องเป็นรายวัน (วันต่อวัน)");
+        endDateInput.value = startDateInput.value;
+      }
+    });
+  }
+}
+
 function initDefaultBookingDates() {
   const startDateInput = document.getElementById("start-date");
   const endDateInput = document.getElementById("end-date");
-  if (startDateInput && !startDateInput.value) {
-    const today = new Date();
-    if (today.getHours() >= 16) {
-      today.setDate(today.getDate() + 1);
-    }
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, "0");
-    const dd = String(today.getDate()).padStart(2, "0");
-    const defaultDate = `${yyyy}-${mm}-${dd}`;
-    startDateInput.value = defaultDate;
-    if (endDateInput && !endDateInput.value) {
-      endDateInput.value = defaultDate;
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, "0");
+  const dd = String(today.getDate()).padStart(2, "0");
+  const todayStr = `${yyyy}-${mm}-${dd}`;
+
+  if (startDateInput) {
+    startDateInput.min = todayStr;
+    if (!startDateInput.value) {
+      if (today.getHours() >= 16) {
+        today.setDate(today.getDate() + 1);
+      }
+      const tY = today.getFullYear();
+      const tM = String(today.getMonth() + 1).padStart(2, "0");
+      const tD = String(today.getDate()).padStart(2, "0");
+      startDateInput.value = `${tY}-${tM}-${tD}`;
     }
   }
+
+  if (endDateInput && startDateInput) {
+    // 🔒 ล็อคให้ end-date ตรงกับ start-date เสมอ (วันต่อวัน)
+    endDateInput.value = startDateInput.value;
+    endDateInput.min = startDateInput.value;
+    endDateInput.max = startDateInput.value;
+  }
+
+  bindDateInputs();
 }
 
 function selectRoom(place) {
@@ -749,21 +786,28 @@ function getBookingFormData(form) {
 
   const formData = new FormData(form);
 
-  const startDateVal = document.getElementById("start-date")?.value;
-  const startTimeVal = document.getElementById("start-time-select")?.value;
-  const endDateVal = document.getElementById("end-date")?.value;
-  const endTimeVal = document.getElementById("end-time-select")?.value;
+  const startDateVal = String(document.getElementById("start-date")?.value || "").trim();
+  const startTimeVal = String(document.getElementById("start-time-select")?.value || "").trim();
+  const endDateVal = String(document.getElementById("end-date")?.value || "").trim();
+  const endTimeVal = String(document.getElementById("end-time-select")?.value || "").trim();
 
-  const startTime = (startDateVal && startTimeVal)
-    ? new Date(`${startDateVal}T${startTimeVal}`)
-    : new Date(formData.get("startTime"));
+  if (!startDateVal) {
+    throw new Error("กรุณาระบุวันที่เริ่มใช้งาน");
+  }
+  if (!endDateVal) {
+    throw new Error("กรุณาระบุวันที่สิ้นสุดการใช้งาน");
+  }
 
-  const endTime = (endDateVal && endTimeVal)
-    ? new Date(`${endDateVal}T${endTimeVal}`)
-    : new Date(formData.get("endTime"));
+  // 🚫 บล็อคห้ามจองข้ามวันเด็ดขาด — ต้องจองการใช้ห้องวันต่อวัน
+  if (startDateVal !== endDateVal) {
+    throw new Error("ระบบไม่อนุญาตให้จองข้ามวัน กรุณาเลือกการใช้ห้องเป็นรายวัน (วันต่อวัน)");
+  }
+
+  const startTime = new Date(`${startDateVal}T${startTimeVal}`);
+  const endTime = new Date(`${endDateVal}T${endTimeVal}`);
 
   if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime()) || endTime <= startTime) {
-    throw new Error("เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่มต้น");
+    throw new Error("เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่มต้น (ภายในวันเดียวกัน)");
   }
   if (startTime <= new Date()) {
     throw new Error("กรุณาเลือกเวลาเริ่มใช้ในอนาคต");
@@ -1041,6 +1085,7 @@ async function initialize() {
   await populateRoomOptions();
   populateYearFilter();
   bindNavigation();
+  bindDateInputs();
 
   // 2. ตรวจสอบ Session และสิทธิ์ผู้ใช้งาน
   if (!(await initAuthSession())) return;
