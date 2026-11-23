@@ -291,6 +291,100 @@ function renderRoomFacilities(placeId) {
 // ==========================================
 let currentSelectedPlace = null;
 
+/**
+ * สร้างข้อมูล slots รูป 3 ใบ สำหรับห้องที่เลือก
+ * ใช้ร่วมกันทั้ง Photos Modal และ Banner thumbnails
+ */
+function buildPhotoSlots(place) {
+  const safeId = encodeURIComponent(String(place.id).trim());
+  const slots = [
+    {
+      title: "รูปภายในห้องที่ 1",
+      candidates: [`img/rooms/${safeId}_1.jpg`, `img/rooms/${safeId}_1.jpeg`, `img/rooms/${safeId}_1.png`]
+    },
+    {
+      title: "รูปภายในห้องที่ 2",
+      candidates: [`img/rooms/${safeId}_2.jpg`, `img/rooms/${safeId}_2.jpeg`, `img/rooms/${safeId}_2.png`]
+    },
+    {
+      title: "รูปภายในห้องที่ 3",
+      candidates: [`img/rooms/${safeId}_3.jpg`, `img/rooms/${safeId}_3.jpeg`, `img/rooms/${safeId}_3.png`]
+    }
+  ];
+  // เสริมด้วย interior_photos/gallery จาก Firestore (ถ้ามี)
+  const customList = Array.isArray(place.interior_photos)
+    ? place.interior_photos
+    : (Array.isArray(place.gallery) ? place.gallery : null);
+  if (customList && customList.length > 0) {
+    customList.forEach((url, i) => {
+      if (slots[i] && url) slots[i].candidates.unshift(url);
+    });
+  }
+  return slots;
+}
+
+/**
+ * แสดงรูปย่อ 3 รูปใต้ชื่อห้องประชุมในแถบสรุปห้องที่เลือก
+ */
+function renderBannerRoomPhotos(place) {
+  const bannerPhotos = document.getElementById("banner-room-photos");
+  if (!bannerPhotos) return;
+
+  bannerPhotos.innerHTML = "";
+  const slots = buildPhotoSlots(place);
+
+  slots.forEach((slot, idx) => {
+    const col = document.createElement("div");
+    col.className = "col-4";
+
+    const frame = document.createElement("div");
+    frame.className = "banner-photo-item";
+    frame.style.cssText = "height: 95px; border-radius: 8px; overflow: hidden; background: #010611; cursor: pointer; position: relative; border: 1.5px solid rgba(0,180,255,0.25);";
+    frame.title = `คลิกดูรูปขยาย - ${slot.title}`;
+
+    const img = document.createElement("img");
+    img.alt = slot.title;
+    img.loading = "lazy";
+    img.style.cssText = "width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease;";
+    frame.addEventListener("mouseenter", () => { img.style.transform = "scale(1.08)"; });
+    frame.addEventListener("mouseleave", () => { img.style.transform = "scale(1)"; });
+
+    let cIdx = 0;
+    img.src = slot.candidates[cIdx];
+    img.addEventListener("error", () => {
+      cIdx++;
+      if (cIdx < slot.candidates.length) {
+        img.src = slot.candidates[cIdx];
+      } else {
+        frame.innerHTML = `
+          <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#64748b;font-size:0.68rem;text-align:center;padding:0.3rem;">
+            <i class="bi bi-camera" style="font-size:1.2rem;color:rgba(0,180,255,0.4);margin-bottom:2px;"></i>
+            <span>รูปภายใน ${idx + 1}</span>
+          </div>`;
+        frame.style.cursor = "default";
+      }
+    });
+
+    frame.appendChild(img);
+
+    // ป้ายมุมมองเล็กๆ ที่มุมซ้ายล่างของรูป
+    const tag = document.createElement("span");
+    tag.className = "banner-photo-tag";
+    tag.innerHTML = `<i class="bi bi-zoom-in me-1"></i>รูปที่ ${idx + 1}`;
+    frame.appendChild(tag);
+
+    frame.addEventListener("click", () => {
+      const activeImg = frame.querySelector("img");
+      if (activeImg && activeImg.src && !activeImg.src.endsWith("undefined")) {
+        openPhotoLightbox(activeImg.src, `${place.name} - รูปที่ ${idx + 1}`);
+      }
+    });
+
+    col.appendChild(frame);
+    bannerPhotos.appendChild(col);
+  });
+}
+
 function selectRoom(place) {
   if (!place) return;
 
@@ -304,10 +398,6 @@ function selectRoom(place) {
 
   currentSelectedPlace = place;
 
-  if (locationInput) {
-    locationInput.value = place.id;
-  }
-
   // ปรับสถานะการเน้นสีของการ์ดห้องที่เลือก (Selected State)
   document.querySelectorAll(".room-card").forEach((card) => {
     const isThis = card.dataset.placeId === String(place.id);
@@ -315,17 +405,15 @@ function selectRoom(place) {
     card.setAttribute("aria-selected", isThis ? "true" : "false");
   });
 
+  if (locationInput) locationInput.value = place.id;
+
   // ซ่อนกล่องแจ้งเตือน และเปิดส่วนรายละเอียดการจอง
   const detailsSection = document.getElementById("booking-details-section");
   const promptBanner = document.getElementById("room-selection-prompt");
-  if (detailsSection) {
-    detailsSection.classList.remove("d-none");
-  }
-  if (promptBanner) {
-    promptBanner.classList.add("d-none");
-  }
+  if (detailsSection) detailsSection.classList.remove("d-none");
+  if (promptBanner) promptBanner.classList.add("d-none");
 
-  // อัปเดตแถบชื่อห้องและป้ายความจุในส่วนรายละเอียด
+  // อัปเดตแถบชื่อห้องและป้ายความจุ
   const currentRoomName = document.getElementById("current-room-name");
   const currentRoomCap = document.getElementById("current-room-capacity");
   const attendeesInput = document.getElementById("attendees");
@@ -341,7 +429,7 @@ function selectRoom(place) {
     }
   }
 
-  // ปรับแต่งคำแนะนำและ placeholder ของช่องระบุจำนวนผู้เข้าใช้ห้อง
+  // ปรับแต่งคำแนะนำช่องจำนวนผู้เข้าใช้ห้อง
   if (place.capacity) {
     if (attendeesInput) attendeesInput.placeholder = `ระบุจำนวนคน (ห้องนี้จุได้ ${place.capacity} คน)`;
     if (attendeesHint) attendeesHint.innerHTML = `<i class="bi bi-check2-circle text-gold me-1"></i> ความจุของห้องนี้: <strong>${place.capacity}</strong> คน`;
@@ -350,8 +438,14 @@ function selectRoom(place) {
     if (attendeesHint) attendeesHint.innerHTML = `<i class="bi bi-info-circle me-1"></i> ระบุจำนวนผู้เข้าร่วม (คน)`;
   }
 
+  // แสดงรูปเล็ก 3 รูปใต้ชื่อห้องประชุมในแถบ banner
+  renderBannerRoomPhotos(place);
+
   // อัปเดตรายการอุปกรณ์ประจำห้อง
   renderRoomFacilities(place.id);
+
+  // 💥 เด้ง Popup รูปภาพบรรยากาศภายในห้อง 3 รูปขึ้นมาทันที ตามที่ผู้ใช้ต้องการ
+  showRoomPhotosModal(place);
 
   // เลื่อนหน้าจอลงมายังส่วนรายละเอียดอย่างนุ่มนวล
   if (detailsSection) {
@@ -370,6 +464,9 @@ function resetRoomSelection(scrollBack = true) {
     card.classList.remove("selected");
     card.setAttribute("aria-selected", "false");
   });
+
+  const bannerPhotos = document.getElementById("banner-room-photos");
+  if (bannerPhotos) bannerPhotos.innerHTML = "";
 
   const detailsSection = document.getElementById("booking-details-section");
   const promptBanner = document.getElementById("room-selection-prompt");
@@ -426,46 +523,7 @@ function showRoomPhotosModal(place) {
   grid.innerHTML = "";
 
   const safeId = encodeURIComponent(String(place.id).trim());
-
-  // กำหนด 3 รูปภาพภายในห้องประชุม (ไม่นับรวมรูปภาพหน้าปกของการ์ดห้อง)
-  const slots = [
-    {
-      title: "รูปภายในห้องที่ 1",
-      candidates: [
-        `img/rooms/${safeId}_1.jpg`,
-        `img/rooms/${safeId}_1.jpeg`,
-        `img/rooms/${safeId}_1.png`
-      ]
-    },
-    {
-      title: "รูปภายในห้องที่ 2",
-      candidates: [
-        `img/rooms/${safeId}_2.jpg`,
-        `img/rooms/${safeId}_2.jpeg`,
-        `img/rooms/${safeId}_2.png`
-      ]
-    },
-    {
-      title: "รูปภายในห้องที่ 3",
-      candidates: [
-        `img/rooms/${safeId}_3.jpg`,
-        `img/rooms/${safeId}_3.jpeg`,
-        `img/rooms/${safeId}_3.png`
-      ]
-    }
-  ];
-
-  // ถ้าใน Firestore มี array interior_photos หรือ gallery ให้ดึงมาใช้แทน/เสริม
-  const customList = Array.isArray(place.interior_photos)
-    ? place.interior_photos
-    : (Array.isArray(place.gallery) ? place.gallery : null);
-  if (customList && customList.length > 0) {
-    customList.forEach((url, i) => {
-      if (slots[i] && url) {
-        slots[i].candidates.unshift(url);
-      }
-    });
-  }
+  const slots = buildPhotoSlots(place);
 
   slots.forEach((slot, idx) => {
     const col = document.createElement("div");

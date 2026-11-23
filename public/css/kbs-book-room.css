@@ -534,6 +534,31 @@
         padding: 1rem 1.25rem;
         box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
       }
+
+      /* ─── Banner thumbnail รูปเล็ก 3 รูปใต้ชื่อห้อง ─── */
+      #banner-room-photos .banner-photo-item {
+        transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+        position: relative;
+        cursor: pointer;
+      }
+      #banner-room-photos .banner-photo-item:hover {
+        transform: translateY(-2px) scale(1.02);
+        box-shadow: 0 6px 16px rgba(0, 180, 255, 0.4);
+        border-color: rgba(255, 215, 0, 0.6) !important;
+      }
+      #banner-room-photos .banner-photo-tag {
+        position: absolute;
+        bottom: 4px;
+        left: 4px;
+        background: rgba(1, 6, 17, 0.82);
+        backdrop-filter: blur(4px);
+        color: #e2e8f0;
+        font-size: 0.65rem;
+        padding: 1px 6px;
+        border-radius: 4px;
+        border: 1px solid rgba(0, 180, 255, 0.3);
+        pointer-events: none;
+      }
       #booking-details-section {
         animation: fadeInDetails 0.35s ease;
       }
