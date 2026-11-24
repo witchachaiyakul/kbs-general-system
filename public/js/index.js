@@ -39,8 +39,14 @@ async function initDashboard() {
     } catch (e) {
         console.error("❌ อ่านข้อมูลผู้ใช้งานล้มเหลว:", e);
         sessionStorage.removeItem("kbs_user");
+        localStorage.removeItem("kbs_user_session");
         window.location.href = MAIN_PORTAL_URL;
         return;
+    }
+
+    const btnBackToPortal = document.getElementById("btnBackToPortal");
+    if (btnBackToPortal) {
+        btnBackToPortal.href = MAIN_PORTAL_URL;
     }
 
     bindLogoutBtn();
@@ -106,6 +112,7 @@ async function handleLogout() {
             await insertAuditLog("LOGOUT", `ออกจากระบบสำเร็จ`, currentUser);
         }
         sessionStorage.removeItem("kbs_user");
+        localStorage.removeItem("kbs_user_session");
         window.location.href = MAIN_PORTAL_URL;
     }
 }
