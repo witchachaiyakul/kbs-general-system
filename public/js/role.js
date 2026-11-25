@@ -10,9 +10,9 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // รายการเมนูทั้งหมดของระบบบริหารทั่วไป (ตรงกับ data-menu-id ใน index.html)
-// รายการเมนูทั้งหมดของระบบบริหารทั่วไป (ตรงกับ data-menu-id ใน index.html)
 const ALL_MENUS = [
     { id: 'kbsroom', name: 'จองห้องประชุม / สถานที่', icon: 'bi-calendar-check-fill' },
+    { id: 'kbsCar', name: 'จองรถ / ขอใช้ยานพาหนะ', icon: 'bi-car-front-fill' },
     { id: 'kbsRepair', name: 'แจ้งซ่อม', icon: 'bi-tools' },
     { id: 'kbsFixAdmin', name: 'บริหารจัดการงานแจ้งซ่อม', icon: 'bi-clipboard2-check-fill' },
     { id: 'kbsFixer', name: 'งานซ่อมของช่าง (Fixer)', icon: 'bi-wrench-adjustable-circle-fill' },
@@ -21,9 +21,9 @@ const ALL_MENUS = [
 
 // 🎯 ค่าเริ่มต้น (Default) ของแต่ละ Role เมื่อแอดมินกดเปลี่ยนใน Dropdown
 const DEFAULT_GENERAL_PERMISSIONS = {
-    admin: ['kbsroom', 'kbsRepair', 'kbsFixAdmin', 'kbsFixer', 'kbsGmManage'],
-    officer: ['kbsroom', 'kbsRepair'],
-    staff: ['kbsroom', 'kbsRepair']
+    admin: ['kbsroom', 'kbsCar', 'kbsRepair', 'kbsFixAdmin', 'kbsFixer', 'kbsGmManage'],
+    officer: ['kbsroom', 'kbsCar', 'kbsRepair'],
+    staff: ['kbsroom', 'kbsCar', 'kbsRepair']
 };
 
 let usersCache = [];

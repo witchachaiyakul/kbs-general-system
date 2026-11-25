@@ -211,6 +211,7 @@ function renderGlobalNavbar() {
       const pageToMenuMap = {
         "index.html": "index",
         "kbs-book-room.html": "kbsroom",
+        "kbs-book-car.html": "kbsCar",
         "role.html": "kbsbudgetuse"
       };
       const currentFile = window.location.pathname.split("/").pop();

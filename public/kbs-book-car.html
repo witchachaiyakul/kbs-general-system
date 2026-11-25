@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0d233a">
+    <title>ระบบจองรถ / ขอใช้ยานพาหนะ - โรงเรียนกาญจนาภิเษกวิทยาลัย กระบี่</title>
+
+    <!-- Bootstrap 5, Bootstrap Icons, Google Fonts Sarabun -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <!-- Custom Main CSS -->
+    <link rel="stylesheet" href="./css/main.css">
+    <script type="module" src="./js/auth-guard.js"></script>
+    <style>
+      .form-glass-card {
+        background: #ffffff;
+        border-radius: 16px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+      }
+      .vehicle-card {
+        border: 2px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 14px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      .vehicle-card:hover {
+        border-color: #0284c7;
+        background-color: #f0f9ff;
+      }
+      .vehicle-card.selected {
+        border-color: #0284c7;
+        background-color: #e0f2fe;
+        box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.25);
+      }
+    </style>
+  </head>
+  <body class="bg-light">
+
+    <!-- Navbar ด้านบนมาตรฐาน -->
+    <nav class="navbar navbar-expand-lg navbar-dark shadow-sm mb-4" style="background-color: var(--navy-dark, #0d233a); border-bottom: 2px solid var(--gold-accent, #ffc107);">
+      <div class="container-fluid d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center">
+          <span class="navbar-brand mb-0 h1 text-white me-2">
+            <i class="bi bi-car-front-fill me-2" style="color: var(--gold-accent, #ffc107);"></i>ระบบขอใช้ยานพาหนะ (จองรถ)
+          </span>
+        </div>
+
+        <!-- ส่วนแสดงโปรไฟล์ผู้ใช้งาน -->
+        <div class="d-flex align-items-center text-white" id="userHeaderProfile">
+          <img id="headerUserImg" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Profile" class="rounded-circle me-2" style="width: 38px; height: 38px; object-fit: cover; border: 2px solid var(--gold-accent, #ffc107);">
+          <div class="me-3 text-end">
+            <div class="fw-bold small" id="headerUserName">Loading...</div>
+            <small class="text-white-50 d-block" style="font-size: 11px;" id="headerUserPosition">ตำแหน่ง: -</small>
+            <span class="badge bg-info text-dark" style="font-size: 10px;" id="headerUserRole">Role: -</span>
+          </div>
+          <a href="index.html" class="btn btn-outline-light btn-sm rounded-3">
+            <i class="bi bi-house-door me-1"></i> หน้าหลัก
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <main class="container pb-5">
+      <!-- แท็บเมนูหลัก -->
+      <ul class="nav nav-pills mb-4 gap-2" role="tablist">
+        <li class="nav-item">
+          <button class="nav-link active" type="button" data-view="booking-view" id="tabBooking">
+            <i class="bi bi-pencil-square me-1"></i> แบบฟอร์มขอใช้รถ
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" type="button" data-view="history-view" id="tabHistory">
+            <i class="bi bi-list-check me-1"></i> รายการจองรถของฉัน / ติดตามสถานะ
+          </button>
+        </li>
+      </ul>
+
+      <!-- แท็บ 1: แบบฟอร์มขอใช้รถ -->
+      <section id="booking-view" class="form-glass-card shadow-sm p-4 mb-4">
+        <h4 class="card-title fw-bold mb-4 text-primary">
+          <i class="bi bi-file-earmark-text me-2"></i>กรอกข้อมูลคำขอใช้ยานพาหนะ
+        </h4>
+
+        <form id="car-booking-form" class="row g-3">
+          <!-- ข้อมูลผู้ขอ -->
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">ชื่อ-นามสกุล ผู้ขอใช้รถ <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="requester-name" required placeholder="ดึงข้อมูลจากบัญชีผู้ใช้">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">ตำแหน่ง</label>
+            <input type="text" class="form-control" id="requester-pos" placeholder="ตำแหน่ง">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">เบอร์โทรศัพท์ติดต่อ <span class="text-danger">*</span></label>
+            <input type="tel" class="form-control" id="requester-tel" required placeholder="08x-xxxxxxx">
+          </div>
+
+          <!-- รายละเอียดการเดินทาง -->
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">สถานที่ปลายทาง / เส้นทาง <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="destination" required placeholder="เช่น สนามบินกระบี่, ศาลากลางจังหวัดกระบี่">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">วัตถุประสงค์การใช้รถ <span class="text-danger">*</span></label>
+            <input type="text" class="form-control" id="purpose" required placeholder="เช่น นำนักเรียนเข้าร่วมแข่งขัน, ไปราชการ">
+          </div>
+
+          <!-- วันที่และเวลาเดินทาง -->
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">วันเดินทางไป <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" id="start-date" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">เวลาออกเดินทาง <span class="text-danger">*</span></label>
+            <input type="time" class="form-control" id="start-time" required value="08:30">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">วันเดินทางกลับ <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" id="end-date" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">เวลากลับถึงโรงเรียน <span class="text-danger">*</span></label>
+            <input type="time" class="form-control" id="end-time" required value="16:30">
+          </div>
+
+          <!-- ข้อมูลผู้โดยสาร & ประเภทรถ -->
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">จำนวนผู้โดยสาร (คน) <span class="text-danger">*</span></label>
+            <input type="number" class="form-control" id="passenger-count" min="1" max="50" required placeholder="จำนวนคน">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">ประเภทรถที่ต้องการ <span class="text-danger">*</span></label>
+            <select class="form-select" id="vehicle-type" required>
+              <option value="">-- เลือกประเภทรถ --</option>
+              <option value="รถตู้ 1 (นข-xxxx กระบี่)">รถตู้ส่วนกลาง 1 (12-14 ที่นั่ง)</option>
+              <option value="รถตู้ 2 (นข-xxxx กระบี่)">รถตู้ส่วนกลาง 2 (12-14 ที่นั่ง)</option>
+              <option value="รถกระบะ 4 ประตู">รถกระบะ 4 ประตู</option>
+              <option value="รถบัส / มินิบัสโรงเรียน">รถบัส / มินิบัสโรงเรียน</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">พนักงานขับรถ <span class="text-danger">*</span></label>
+            <select class="form-select" id="driver-option" required>
+              <option value="ขอพนักงานขับรถของโรงเรียน">ขอพนักงานขับรถของโรงเรียน</option>
+              <option value="ขับเอง (มีใบอนุญาตขับขี่ราชการ)">ขับเอง (มีใบอนุญาตขับขี่ราชการ)</option>
+            </select>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label fw-semibold">รายชื่อผู้ร่วมเดินทาง / สัมภาระอุปกรณ์เพิ่มเติม</label>
+            <textarea class="form-control" id="passenger-notes" rows="2" placeholder="ระบุรายชื่อครู/นักเรียนที่ร่วมเดินทาง หรือรายละเอียดสัมภาระ (ถ้ามี)"></textarea>
+          </div>
+
+          <div class="col-12 text-end pt-3">
+            <button type="submit" class="btn btn-primary px-4 py-2 rounded-3 shadow-sm" id="btnSubmitBooking">
+              <i class="bi bi-send-fill me-1"></i> ส่งคำขอจองรถ
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- แท็บ 2: ประวัติและสถานะ -->
+      <section id="history-view" class="form-glass-card shadow-sm p-4 d-none">
+        <h4 class="card-title fw-bold mb-4 text-primary">
+          <i class="bi bi-clock-history me-2"></i>ประวัติการขอใช้รถของฉัน
+        </h4>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>เลขที่คำขอ</th>
+                <th>ปลายทาง / วัตถุประสงค์</th>
+                <th>ประเภทรถ</th>
+                <th>วัน-เวลาเดินทาง</th>
+                <th>สถานะ</th>
+              </tr>
+            </thead>
+            <tbody id="car-history-tbody">
+              <tr>
+                <td colspan="5" class="text-center py-4 text-muted">
+                  <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                  ยังไม่มีประวัติการส่งคำขอจองรถ
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script type="module">
+      // สลับแท็บ View
+      const tabBooking = document.getElementById("tabBooking");
+      const tabHistory = document.getElementById("tabHistory");
+      const bookingView = document.getElementById("booking-view");
+      const historyView = document.getElementById("history-view");
+
+      tabBooking.addEventListener("click", () => {
+        tabBooking.classList.add("active");
+        tabHistory.classList.remove("active");
+        bookingView.classList.remove("d-none");
+        historyView.classList.add("d-none");
+      });
+
+      tabHistory.addEventListener("click", () => {
+        tabHistory.classList.add("active");
+        tabBooking.classList.remove("active");
+        historyView.classList.remove("d-none");
+        bookingView.classList.add("d-none");
+      });
+
+      // ดึงข้อมูลผู้ใช้งานมาใส่ในฟอร์มอัตโนมัติ
+      const userStr = sessionStorage.getItem("kbs_user");
+      if (userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          if (user.name) document.getElementById("requester-name").value = user.name;
+          if (user.pos || user.position) document.getElementById("requester-pos").value = user.pos || user.position;
+          if (user.tel) document.getElementById("requester-tel").value = user.tel;
+        } catch (e) {
+          console.warn("ไม่สามารถอ่านข้อมูลผู้ใช้:", e);
+        }
+      }
+
+      // กำหนดวันเดินทางเริ่มต้นเป็นวันปัจจุบัน
+      const today = new Date().toISOString().split("T")[0];
+      const startDateInput = document.getElementById("start-date");
+      const endDateInput = document.getElementById("end-date");
+      if (startDateInput) {
+        startDateInput.value = today;
+        startDateInput.min = today;
+      }
+      if (endDateInput) {
+        endDateInput.value = today;
+        endDateInput.min = today;
+      }
+      if (startDateInput && endDateInput) {
+        startDateInput.addEventListener("change", () => {
+          endDateInput.min = startDateInput.value;
+          if (endDateInput.value < startDateInput.value) {
+            endDateInput.value = startDateInput.value;
+          }
+        });
+      }
+
+      // ส่งคำขอจองรถ
+      const form = document.getElementById("car-booking-form");
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        Swal.fire({
+          icon: "success",
+          title: "บันทึกคำขอจองรถเรียบร้อย",
+          text: "คำขอของคุณได้รับการบันทึกและส่งให้งานยานพาหนะตรวจสอบแล้ว",
+          confirmButtonColor: "#0d233a",
+          confirmButtonText: "ตกลง"
+        }).then(() => {
+          form.reset();
+          tabHistory.click();
+        });
+      });
+    </script>
+  </body>
+</html>

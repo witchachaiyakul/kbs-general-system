@@ -81,17 +81,20 @@ export function applyUserPermissions(userData) {
     if (!userData) return;
 
     const userRole = (userData.role || "staff").toLowerCase();
+    const isAdmin = userRole === "admin";
     const hasCustomPerms = Array.isArray(userData.general_permission);
 
-    // ถ้าเคยบันทึก general_permission แล้วให้ใช้ค่านั้น 100% ถ้ายังไม่เคยให้ใช้ค่าเริ่มต้นตาม Role
+    // เมนูพื้นฐานทั่วไป (จองห้อง, จองรถ, แจ้งซ่อม)
+    const defaultBasicMenus = ["kbsroom", "kbsCar", "kbsRepair"];
     const allowedMenus = hasCustomPerms
-        ? userData.general_permission
-        : (userRole === "admin" ? ["kbsroom", "kbsGmManage"] : ["kbsroom"]);
+        ? [...userData.general_permission]
+        : (isAdmin ? ["kbsroom", "kbsCar", "kbsRepair", "kbsFixAdmin", "kbsFixer", "kbsGmManage"] : defaultBasicMenus);
 
     const menuItems = document.querySelectorAll(".menu-item");
     menuItems.forEach((item) => {
         const menuId = item.getAttribute("data-menu-id") || "";
-        const canAccess = allowedMenus.includes(menuId);
+        // แอดมิน หรือมีสิทธิ์ตามระบุ หรือเป็นเมนูบริการทั่วไป (kbsCar) สำหรับผู้ใช้ทั่วไป
+        const canAccess = isAdmin || allowedMenus.includes(menuId) || (menuId === "kbsCar" && (allowedMenus.includes("kbsroom") || userRole === "staff" || userRole === "officer"));
         item.classList.toggle("d-none", !canAccess);
     });
 }
